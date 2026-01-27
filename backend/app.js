@@ -1,36 +1,55 @@
-import express from "express"
-import morgan from "morgan"
-import authRoutes from "./routes/auth.route.js"
-import cookieParser from "cookie-parser"
-import userRoutes from "./routes/user.route.js"
-import cors from "cors"
+import express from "express";
+import morgan from "morgan";
+import cors from "cors";
+import cookieParser from "cookie-parser";
 
-const app = express()
+import authRoutes from "./routes/auth.route.js";
+//import userRoutes from "./routes/user.route.js";
+import eventRoutes from "./routes/event.route.js";
+import ticketTypeRoutes from "./routes/ticketType.route.js";
+import orderRoutes from "./routes/order.route.js";
+import ticketRoutes from "./routes/ticket.route.js";
 
-const allowedOrigins = [process.env.CLIENT_URL, "http://localhost:5173"].filter(Boolean)
+const app = express();
+
+const allowedOrigins = [process.env.CLIENT_URL, "http://localhost:5173"].filter(Boolean);
 
 app.use(
     cors({
         origin: allowedOrigins,
         credentials: true,
     })
-)
+);
 
-// ✅ Express 5: responder preflight sin rutas con wildcard
+// Express 5: responder preflight
 app.use((req, res, next) => {
-    if (req.method === "OPTIONS") return res.sendStatus(204)
-    next()
-})
+    if (req.method === "OPTIONS") return res.sendStatus(204);
+    next();
+});
 
-app.use(morgan("dev"))
-app.use(express.json())
-app.use(cookieParser())
+app.use(morgan("dev"));
+app.use(express.json());
+app.use(cookieParser());
 
 app.get("/api/health", (req, res) => {
-    res.status(200).json({ ok: true })
-})
+    res.status(200).json({ ok: true });
+});
 
-app.use("/api", authRoutes)
-app.use("/api/users", userRoutes)
+app.use("/api", authRoutes);
+//app.use("/api/users", userRoutes);
+app.use("/api", eventRoutes);
+app.use("/api", ticketTypeRoutes);
+app.use("/api", orderRoutes);
+app.use("/api", ticketRoutes);
 
-export default app
+
+// ✅ Error handler (recomendado)
+app.use((err, req, res, next) => {
+    console.error(err);
+    const status = err.status || 500;
+    res.status(status).json({
+        message: err.message || "Internal server error",
+    });
+});
+
+export default app;
