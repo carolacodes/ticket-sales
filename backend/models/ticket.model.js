@@ -10,10 +10,11 @@ const ticketSchema = new mongoose.Schema(
         code: { type: String, required: true, unique: true }, // UUID
         status: { type: String, enum: ["VALID", "USED", "VOID"], default: "VALID" },
         checkedInAt: { type: Date, default: null },
+        voidedAt: { type: Date, default: null },
+        voidReason: { type: String, default: null },
     },
     { timestamps: true }
 );
-
 ticketSchema.index({ eventId: 1, status: 1 });
 ticketSchema.index({ userId: 1, createdAt: -1 });
 
