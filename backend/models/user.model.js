@@ -12,6 +12,12 @@ const userSchema = new mongoose.Schema(
 
         emailVerified: { type: Boolean, default: false },
 
+        emailVerifyTokenHash: { type: String, default: null },
+        emailVerifyExpiresAt: { type: Date, default: null },
+
+        passwordResetTokenHash: { type: String, default: null },
+        passwordResetExpiresAt: { type: Date, default: null },
+        passwordChangedAt: { type: Date, default: null },
         // Para login con Google/Facebook (simple)
         oauthProviders: {
         type: [

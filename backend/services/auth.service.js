@@ -21,3 +21,45 @@ export async function updateLastLogin(userId) {
 }
 
 
+export async function setEmailVerificationToken(userId, tokenHash, expiresAt) {
+    return await User.findByIdAndUpdate(
+        userId,
+        {
+        emailVerifyTokenHash: tokenHash,
+        emailVerifyExpiresAt: expiresAt,
+        },
+        { new: true }
+    );
+}
+
+
+export async function setPasswordResetToken(userId, tokenHash, expiresAt) {
+    return await User.findByIdAndUpdate(
+        userId,
+        {
+            passwordResetTokenHash: tokenHash,
+            passwordResetExpiresAt: expiresAt,
+        },
+        { new: true }
+    );
+}
+
+export async function findUserByPasswordResetTokenHash(tokenHash) {
+    return await User.findOne({
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: { $gt: new Date() },
+    });
+}
+
+export async function updateUserPassword(userId, passwordHash) {
+    return await User.findByIdAndUpdate(
+        userId,
+        {
+            passwordHash,
+            passwordResetTokenHash: null,
+            passwordResetExpiresAt: null,
+            passwordChangedAt: new Date(),
+        },
+        { new: true }
+    );
+}

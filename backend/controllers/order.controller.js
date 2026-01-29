@@ -1,9 +1,14 @@
 import mongoose from "mongoose";
 import { createOrder, findOrdersByUserId, findOrderById, updateOrderById } from "../services/order.service.js";
 import { findEventById } from "../services/event.service.js";
-import TicketType from "../models/ticketType.model.js"; // usamos el model directo para query con sesión
+//import TicketType from "../models/ticketType.model.js"; // usamos el model directo para query con sesión
 import { v4 as uuidv4 } from "uuid";
 import { createManyTickets } from "../services/ticket.service.js";
+import User from "../models/user.model.js";
+import Event from "../models/event.model.js";
+import TicketType from "../models/ticketType.model.js";
+import { sendEmail } from "../libs/mailer.js";
+import { orderConfirmedEmail } from "../emails/orderConfirmed.email.js";
 
 export async function create(req, res, next) {
     try {
@@ -175,6 +180,44 @@ export async function confirm(req, res, next) {
     await createManyTickets(ticketsToCreate, session);
 
     await session.commitTransaction();
+
+
+    // ✅ Email fuera de la transacción
+    try {
+        const [buyer, event, ticketTypes] = await Promise.all([
+            User.findById(order.userId).select("email username"),
+            Event.findById(order.eventId).select("title"),
+            TicketType.find({ _id: { $in: order.items.map((i) => i.ticketTypeId) } }).select("name"),
+        ]);
+
+        // Map ticketTypeId -> name
+        const ttMap = new Map(ticketTypes.map((tt) => [tt._id.toString(), tt.name]));
+
+        // ticketsToCreate ya tiene code + ticketTypeId
+        const emailTickets = ticketsToCreate.map((t) => ({
+            code: t.code,
+            ticketTypeName: ttMap.get(t.ticketTypeId.toString()) || "Ticket",
+        }));
+
+        const html = orderConfirmedEmail({
+            eventTitle: event?.title || "Evento",
+            orderId: paidOrder._id.toString(),
+            buyerUsername: buyer?.username || "",
+            tickets: emailTickets,
+        });
+
+        const sent = await sendEmail({
+            // ✅ TEST: usar una dirección especial de Resend
+            to: "delivered@resend.dev",
+            subject: `Confirmación de compra - ${event?.title || "Evento"}`,
+            html,
+        });
+
+        console.log("EMAIL_SENT", sent?.id);
+    } catch (e) {
+        console.error("EMAIL_SEND_FAILED", e.message);
+    }
+
     return res.status(200).json({ order: paidOrder });
     } catch (err) {
         await session.abortTransaction();

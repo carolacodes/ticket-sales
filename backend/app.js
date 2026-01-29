@@ -11,7 +11,7 @@ import orderRoutes from "./routes/order.route.js";
 import ticketRoutes from "./routes/ticket.route.js";
 
 const app = express();
-
+app.set("trust proxy", 1);
 const allowedOrigins = [process.env.CLIENT_URL, "http://localhost:5173"].filter(Boolean);
 
 app.use(
