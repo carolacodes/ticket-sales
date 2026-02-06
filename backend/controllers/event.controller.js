@@ -13,6 +13,8 @@ import Order from "../models/order.model.js";
 import { findTicketById, reinstateTicketById , voidTicketById} from "../services/ticketManagement.service.js";
 import { exportEventOrders, exportEventTickets } from "../services/eventExport.service.js";
 
+import { findEventById } from "../services/event.service.js";
+import { findTicketTypesByEventId } from "../services/ticketType.service.js";
 export async function create(req, res, next) {
     try {
         // req.user viene del middleware requireAuth
@@ -431,6 +433,35 @@ export async function exportTicketsCsv(req, res, next) {
         );
 
     return res.status(200).send(csv);
+    } catch (err) {
+        next(err);
+    }
+}
+
+// Listar tipos de tickets públicos de un evento
+export async function listTicketTypesPublic(req, res, next) {
+    try {
+        const event = await findEventById(req.params.id);
+        if (!event) return res.status(404).json({ message: "Event not found" });
+
+        // opcional: solo si está publicado
+        if (event.status !== "PUBLISHED") {
+        return res.status(404).json({ message: "Event not found" });
+        }
+
+        const ticketTypes = await findTicketTypesByEventId(event._id);
+
+        return res.status(200).json({
+        event: { id: event._id, title: event.title },
+        ticketTypes: ticketTypes.map((t) => ({
+            id: t._id,
+            name: t.name,
+            price: t.price,
+            capacity: t.capacity,
+            soldCount: t.soldCount,
+            available: Math.max(0, t.capacity - t.soldCount),
+        })),
+        });
     } catch (err) {
         next(err);
     }

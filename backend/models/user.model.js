@@ -5,8 +5,8 @@ const userSchema = new mongoose.Schema(
         username: { type: String, required: true, unique: true, trim: true },
         email: { type: String, required: true, unique: true, trim: true, lowercase: true },
 
-        // guardá el hash, no el password
-        passwordHash: { type: String, required: true, trim: true },
+        // guardá el hash, no el password, default null para OAuth users
+        passwordHash: { type: String, default: null, trim: true },
 
         role: { type: String, enum: ["BUYER", "ORGANIZER"], default: "BUYER" },
 

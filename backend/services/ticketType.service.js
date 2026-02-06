@@ -19,3 +19,7 @@ export async function updateTicketTypeById(id, update) {
 export async function deleteTicketTypeById(id) {
     return await TicketType.findByIdAndDelete(id);
 }
+
+export async function findTicketTypesByEventId(eventId) {
+    return TicketType.find({ eventId }).sort({ price: 1 });
+}

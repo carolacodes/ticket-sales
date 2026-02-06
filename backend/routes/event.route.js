@@ -57,6 +57,11 @@ router.patch(
     validate(updateEventSchema),
     eventController.update
 );
+// Listar tipos de tickets públicos de un evento
+router.get(
+    "/events/:id/ticket-types", 
+    eventController.listTicketTypesPublic);
+
 // Cambiar status de un evento
 router.patch(
     "/events/:id/status",

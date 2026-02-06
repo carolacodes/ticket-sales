@@ -1,68 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
+@layer base {
   :root {
-    color: #213547;
-    background-color: #ffffff;
+    /* Shadcn tokens (dark) */
+    --background: 240 28% 5%;
+    --foreground: 225 60% 96%;
+
+    --card: 240 28% 8%;
+    --card-foreground: 225 60% 96%;
+
+    --popover: 240 28% 8%;
+    --popover-foreground: 225 60% 96%;
+
+    --primary: 270 90% 65%; /* neon violet */
+    --primary-foreground: 240 20% 10%;
+
+    --secondary: 240 20% 14%;
+    --secondary-foreground: 225 60% 96%;
+
+    --muted: 240 18% 14%;
+    --muted-foreground: 240 8% 70%;
+
+    --accent: 260 86% 58%;
+    --accent-foreground: 225 60% 96%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 225 60% 96%;
+
+    --border: 240 12% 18%;
+    --input: 240 12% 18%;
+    --ring: 270 90% 65%;
+
+    --radius: 16px;
   }
-  a:hover {
-    color: #747bff;
+
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
-  button {
-    background-color: #f9f9f9;
-  }
+}
+
+/* Fondo “SaaS” con gradientes */
+.bg-neon {
+  background:
+    radial-gradient(900px 500px at 20% 10%, rgba(168,85,247,.28), transparent 60%),
+    radial-gradient(700px 400px at 80% 30%, rgba(124,58,237,.20), transparent 55%),
+    radial-gradient(900px 600px at 50% 90%, rgba(168,85,247,.14), transparent 60%),
+    #060611;
+}
+
+/* Glassmorphism panel */
+.glass {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Neon ring / glow */
+.glow {
+  box-shadow:
+    0 0 0 1px rgba(168, 85, 247, 0.15),
+    0 12px 60px rgba(168, 85, 247, 0.18);
 }
