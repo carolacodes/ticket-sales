@@ -13,7 +13,7 @@ import Order from "../models/order.model.js";
 import { findTicketById, reinstateTicketById , voidTicketById} from "../services/ticketManagement.service.js";
 import { exportEventOrders, exportEventTickets } from "../services/eventExport.service.js";
 
-import { findEventById } from "../services/event.service.js";
+//import { findEventById } from "../services/event.service.js";
 import { findTicketTypesByEventId } from "../services/ticketType.service.js";
 export async function create(req, res, next) {
     try {
