@@ -26,10 +26,11 @@ import { getClientIp } from "../libs/requestInfo.js";
 import { resetPasswordEmail } from "../emails/resetPassword.email.js";
 import { passwordChangedEmail } from "../emails/passwordChanged.email.js";
 
+const isProd = process.env.NODE_ENV === "production";
 const refreshCookieOptions = {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: isProd ? "none" : "lax",   // ✅ prod cross-site
+    secure: isProd,                      // ✅ true en prod (https)
     path: "/api/auth/refresh",
 };
 

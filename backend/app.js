@@ -12,6 +12,7 @@ import ticketRoutes from "./routes/ticket.route.js";
 
 const app = express();
 app.set("trust proxy", 1);
+/* 
 const allowedOrigins = [process.env.CLIENT_URL, "http://localhost:5173"].filter(Boolean);
 
 app.use(
@@ -20,6 +21,21 @@ app.use(
         credentials: true,
     })
 );
+*/
+const allowedOrigins = [
+    process.env.CLIENT_URL,
+    "http://localhost:5173",
+].filter(Boolean);
+
+app.use(cors({
+    origin: function (origin, cb) {
+        // permitir requests sin origin (ej: health checks)
+        if (!origin) return cb(null, true);
+        if (allowedOrigins.includes(origin)) return cb(null, true);
+        return cb(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+}));
 
 // Express 5: responder preflight
 app.use((req, res, next) => {
