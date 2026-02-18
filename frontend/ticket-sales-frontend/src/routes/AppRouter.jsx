@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 
-import { Start } from "../pages/start.jsx";
+import { Start } from "../pages/Start.jsx";
 import { Login } from "../pages/Login.jsx";
 import { Dashboard } from "../pages/Dashboard.jsx";
 import { Events } from "../pages/Events.jsx";
@@ -9,6 +9,12 @@ import { Checkout } from "../pages/Checkout.jsx";
 import { MyTickets } from "../pages/MyTickets.jsx";
 import { PrivateRoute } from "./PrivateRoute.jsx";
 import { OrganizerRoute } from "./OrganizerRoute.jsx";
+import { MyProfile } from "../pages/MyProfile.jsx";
+import { VerifyEmail } from "../pages/VerifyEmail.jsx";
+import { Register } from "../pages/Register.jsx";
+import { BuyerRoute } from "./BuyerRoute.jsx";
+import { MyEvents } from "@/pages/MyEvents.jsx"; // la hacemos
+//import { Dashboard } from "@/pages/Dashboard.jsx";
 
 export function AppRouter() {
     return (
@@ -17,27 +23,43 @@ export function AppRouter() {
 
         <Route path="/start" element={<Start />} />
         <Route path="/login" element={<Login />} />
-
+        <Route path="/register" element={<Register />} />
         {/* Buyer flow */}
         <Route path="/events" element={<Events />} />
         <Route path="/events/:id" element={<EventDetail />} />
         <Route path="/checkout/:id" element={<Checkout />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route
             path="/my-tickets"
             element={
-                <PrivateRoute>
+                <BuyerRoute>
                     <MyTickets />
+                </BuyerRoute>
+            }
+        />
+        <Route
+            path="/my-profile"
+            element={
+                <PrivateRoute>
+                    <MyProfile />
                 </PrivateRoute>
             }
         />
-
         {/* Organizer */}
         <Route
             path="/dashboard"
             element={
-            <OrganizerRoute>
+                <OrganizerRoute>
                 <Dashboard />
-            </OrganizerRoute>
+                </OrganizerRoute>
+            }
+        />
+        <Route
+            path="/my-events"
+            element={
+                <OrganizerRoute>
+                <MyEvents />
+                </OrganizerRoute>
             }
         />
 

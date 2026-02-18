@@ -2,13 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
-}
-
+/* =========================
+   Shadcn tokens (DARK)
+   ========================= */
 @layer base {
   :root {
-    /* Shadcn tokens (dark) */
     --background: 240 28% 5%;
     --foreground: 225 60% 96%;
 
@@ -18,7 +16,7 @@
     --popover: 240 28% 8%;
     --popover-foreground: 225 60% 96%;
 
-    --primary: 270 90% 65%; /* neon violet */
+    --primary: 270 90% 65%;
     --primary-foreground: 240 20% 10%;
 
     --secondary: 240 20% 14%;
@@ -40,13 +38,18 @@
     --radius: 16px;
   }
 
+  * {
+    @apply border-border;
+  }
+
   body {
-    background: hsl(var(--background));
-    color: hsl(var(--foreground));
+    @apply bg-background text-foreground;
   }
 }
 
-/* Fondo “SaaS” con gradientes */
+/* =========================
+   Custom background (AppShell)
+   ========================= */
 .bg-neon {
   background:
     radial-gradient(900px 500px at 20% 10%, rgba(168,85,247,.28), transparent 60%),
@@ -55,7 +58,7 @@
     #060611;
 }
 
-/* Glassmorphism panel */
+/* Glass panel helper */
 .glass {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.10);
@@ -63,7 +66,7 @@
   -webkit-backdrop-filter: blur(14px);
 }
 
-/* Neon ring / glow */
+/* Neon glow helper */
 .glow {
   box-shadow:
     0 0 0 1px rgba(168, 85, 247, 0.15),

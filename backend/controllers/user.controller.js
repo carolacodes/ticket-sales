@@ -1,6 +1,7 @@
 import {
     findUserById,
     updateUserById,
+    findUserByUsername,
 } from "../services/user.service.js";
 
 import { signAccessToken, signRefreshToken } from "../libs/jwt.js";

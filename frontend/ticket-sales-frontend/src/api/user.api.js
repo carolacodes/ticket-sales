@@ -11,3 +11,7 @@ export function updateMeRequest(data) {
 export function updateRoleRequest(role) {
     return api.patch("/users/me/role", { role });
 }
+
+export function deleteMeRequest() {
+    return api.delete("/users/me");
+}

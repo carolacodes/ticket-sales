@@ -1,57 +1,55 @@
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth.js";
-import { updateRoleRequest } from "../api/user.api.js";
-import { setAccessToken } from "../libs/token.js";
+import { SiteNavbar } from "@/components/layout/SiteNavbar";
+import { HeroSection } from "@/components/landing/HeroSection";
+import { StatsStrip } from "@/components/landing/StatsStrip";
+import { TrendingSection } from "@/components/landing/TrendingSection";
+import { SiteFooter } from "@/components/layout/SiteFooter";
 
-export function Start() {
-    const { user, isAuth, setUser } = useAuth();
-    const navigate = useNavigate();
+const demoEvents = [
+    {
+        id: "1",
+        category: "MUSIC",
+        tagColor: "violet",
+        title: "CYBERPUNK NIGHT 2024",
+        date: "Nov 12",
+        time: "8:00 PM",
+        location: "Neo Tokyo",
+        image:
+        "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&w=1200&q=80",
+    },
+    {
+        id: "2",
+        category: "TECH",
+        tagColor: "blue",
+        title: "TECH SUMMIT ALPHA",
+        date: "Dec 05",
+        time: "9:00 AM",
+        location: "Silicon Valley",
+        image:
+        "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80",
+    },
+    {
+        id: "3",
+        category: "FESTIVAL",
+        tagColor: "pink",
+        title: "NEON MUSIC FESTIVAL",
+        date: "Jan 20",
+        time: "6:00 PM",
+        location: "Miami Beach",
+        image:
+        "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?auto=format&fit=crop&w=1200&q=80",
+    },
+    ];
 
-    async function handleBuy() {
-        navigate("/events");
-    }
-
-    async function handleSell() {
-        if (!isAuth) return navigate("/login");
-
-        // si ya es organizer -> dashboard
-        if (user?.role === "ORGANIZER") return navigate("/dashboard");
-
-        // si es buyer -> convertir
-        const r = await updateRoleRequest("ORGANIZER");
-
-        // ✅ si tu backend devuelve accessToken + user (como te recomendé)
-        if (r.data?.accessToken) setAccessToken(r.data.accessToken);
-
-        if (r.data?.user) setUser(r.data.user);
-
-        navigate("/dashboard");
-    }
-
+    export function Start() {
+    // TODO: reemplazar demoEvents por fetch real
     return (
-        <div className="min-h-screen bg-neon flex items-center justify-center p-6">
-        <div className="glass glow w-full max-w-xl rounded-2xl p-8">
-            <h1 className="text-2xl font-semibold text-white">Ticket Sales</h1>
-            <p className="text-white/70 mt-2">
-            Elegí cómo querés usar la plataforma 👇
-            </p>
-
-            <div className="mt-6 grid gap-3">
-            <button
-                onClick={handleBuy}
-                className="h-12 rounded-xl bg-white/10 hover:bg-white/15 text-white border border-white/10"
-            >
-                Quiero comprar entradas 🎟️
-            </button>
-
-            <button
-                onClick={handleSell}
-                className="h-12 rounded-xl bg-violet-600/80 hover:bg-violet-600 text-white"
-            >
-                Quiero vender entradas ✨
-            </button>
-            </div>
-        </div>
-        </div>
+        <>
+        <main>
+            <HeroSection />
+            <StatsStrip />
+            <TrendingSection events={demoEvents} />
+        </main>
+        <SiteFooter />
+        </>
     );
 }

@@ -1,3 +1,4 @@
+import twAnimate from "tw-animate";
 export default {
     darkMode: ["class"],
     content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
@@ -31,5 +32,5 @@ export default {
         },
         },
     },
-    plugins: [],
+    plugins: [twAnimate],
 };

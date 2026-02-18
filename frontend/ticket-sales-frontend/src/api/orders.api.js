@@ -1,17 +1,13 @@
 import { api } from "./axios.js";
 
-/**
- * Crea una orden en estado PENDING
- * Backend: POST /api/orders
- */
-export function createOrder({ eventId, items }) {
-    return api.post("/orders", { eventId, items });
+export function createOrderRequest(data) {
+    return api.post("/orders", data);
 }
 
-/**
- * Confirma la orden (fake pay) => genera tickets + manda email
- * Backend: POST /api/orders/:id/confirm
- */
-export function confirmOrder(orderId) {
-    return api.post(`/orders/${orderId}/confirm`);
+export function confirmOrderRequest(orderId, data = {}) {
+    return api.post(`/orders/${orderId}/confirm`, data);
+}
+
+export function listMyOrdersRequest() {
+    return api.get("/orders/me");
 }
