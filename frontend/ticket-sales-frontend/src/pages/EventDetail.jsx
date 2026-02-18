@@ -127,7 +127,6 @@ export function EventDetail() {
     if (loading) {
         return (
         <>
-            {isAuth ? <UserNavbar onLogout={logout} /> : <SiteNavbar />}
             <div className="mx-auto max-w-6xl px-4 py-10">
             <Card className="border-white/10 bg-white/5">
                 <div className="h-72 animate-pulse bg-white/10" />
@@ -145,7 +144,6 @@ export function EventDetail() {
     if (!event) {
         return (
         <>
-            {isAuth ? <UserNavbar onLogout={logout} /> : <SiteNavbar />}
             <div className="mx-auto max-w-6xl px-4 py-10">
             <Card className="border-white/10 bg-white/5">
                 <CardContent className="p-6 text-white/80">
