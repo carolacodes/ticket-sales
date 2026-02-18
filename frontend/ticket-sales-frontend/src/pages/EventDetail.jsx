@@ -124,7 +124,6 @@ export function EventDetail() {
     function goCheckout(ticketTypeId) {
         nav(`/checkout/${id}`, { state: { ticketTypeId } });
     }
-
     if (loading) {
         return (
         <>
@@ -160,7 +159,7 @@ export function EventDetail() {
 
     return (
         <>
-        {isAuth ? <UserNavbar onLogout={logout} /> : <SiteNavbar />}
+        
 
         <div className="mx-auto max-w-6xl px-4 py-8">
             {/* HERO */}

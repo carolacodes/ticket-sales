@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
-import { registerRequest, googleOAuthUrl } from "@/api/auth.api";
+import { registerRequest } from "@/api/auth.api";
 import { Button } from "@/components/ui/button";
 
 function roleFromQuery(q) {
@@ -67,10 +67,6 @@ export function Register() {
         } finally {
         setLoading(false);
         }
-    }
-
-    function loginWithGoogle() {
-        window.location.href = googleOAuthUrl();
     }
 
     return (
@@ -215,14 +211,6 @@ export function Register() {
                 <div className="text-xs text-white/40">OR</div>
                 <div className="h-px flex-1 bg-white/10" />
                 </div>
-
-                <button
-                type="button"
-                onClick={loginWithGoogle}
-                className="h-12 w-full rounded-2xl bg-white/5 hover:bg-white/10 text-white border border-white/10"
-                >
-                Continue with Google
-                </button>
 
                 <div className="mt-2 text-center text-sm text-white/60">
                 Already have an account?{" "}

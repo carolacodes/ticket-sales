@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../hooks/useAuth.js";
-import { googleOAuthUrl } from "../api/auth.api.js";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,9 +47,6 @@ export function Login() {
         }
     }
 
-    function loginWithGoogle() {
-        window.location.href = googleOAuthUrl();
-    }
 
     return (
         <div className="min-h-screen bg-neon flex items-center justify-center px-4 py-10">
@@ -151,16 +147,6 @@ export function Login() {
                     OR
                 </div>
                 </div>
-
-                {/* Google */}
-                <Button
-                type="button"
-                variant="outline"
-                onClick={loginWithGoogle}
-                className="h-12 rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
-                >
-                Continue with Google
-                </Button>
 
                 {/* Register link */}
                 <div className="text-center text-sm text-white/60">
