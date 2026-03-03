@@ -28,6 +28,10 @@ export function updateEventStatusRequest(id, data) {
   return api.patch(`/events/${id}/status`, data);
 }
 
+export function updateEventRequest(eventId, data) {
+  return api.patch(`/events/${eventId}`, data);
+}
+
 export function eventSummaryRequest(id) {
   return api.get(`/events/${id}/summary`);
 }
@@ -50,4 +54,14 @@ export function getEventSummaryRequest(eventId) {
 // Create event
 export function createEventRequest(data) {
   return api.post("/events", data);
+}
+
+
+export function uploadEventBannerRequest(eventId, file) {
+  const form = new FormData();
+  form.append("file", file);
+
+  return api.post(`/events/${eventId}/banner`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
 }

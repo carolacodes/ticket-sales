@@ -28,7 +28,8 @@ const userSchema = new mongoose.Schema(
         ],
         default: [],
         },
-
+        avatarUrl: { type: String, trim: true },
+        avatarPublicId: { type: String, trim: true },
         lastLoginAt: { type: Date, default: null },
     },
     { timestamps: true }

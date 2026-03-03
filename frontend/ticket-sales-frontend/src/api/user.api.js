@@ -15,3 +15,12 @@ export function updateRoleRequest(role) {
 export function deleteMeRequest() {
     return api.delete("/users/me");
 }
+
+export function uploadMyAvatarRequest(file) {
+  const form = new FormData();
+  form.append("file", file);
+
+  return api.post(`/users/me/avatar`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+}

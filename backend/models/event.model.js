@@ -14,7 +14,7 @@ const eventSchema = new mongoose.Schema(
     endAt: { type: Date },
 
     status: { type: String, enum: ["DRAFT", "PUBLISHED", "ENDED"], default: "DRAFT" },
-
+    bannerPublicId: { type: String, trim: true },
     bannerUrl: { type: String, trim: true },
     tags: { type: [String], default: [] },
     },

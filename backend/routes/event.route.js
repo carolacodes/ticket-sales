@@ -8,6 +8,8 @@ import {
     updateEventStatusSchema,
 } from "../schemas/event.schema.js";
 import { requireEventOwner } from "../middlewares/eventOwner.middleware.js";
+import { uploadEventBanner } from "../middlewares/upload.middleware.js";
+import { uploadBanner } from "../controllers/event.controller.js";
 import { summary } from "../controllers/event.controller.js";
 const router = Router();
 
@@ -56,6 +58,15 @@ router.patch(
     requireEventOwner,
     validate(updateEventSchema),
     eventController.update
+);
+// Subir banner de un evento
+router.post(
+    "/events/:id/banner",
+    requireAuth,
+    requireRole("ORGANIZER"),
+    requireEventOwner,
+    uploadEventBanner.single("file"),
+    uploadBanner
 );
 // Listar tipos de tickets públicos de un evento
 router.get(

@@ -5,7 +5,8 @@ import {
 } from "../services/user.service.js";
 
 import { signAccessToken, signRefreshToken } from "../libs/jwt.js";
-
+import User from "../models/user.model.js";
+import cloudinary from "../config/cloudinary.js";
 const sanitizeUser = (user) => ({
     id: user._id,
     username: user.username,
@@ -113,4 +114,33 @@ export async function deleteMe(req, res, next) {
     } catch (err) {
         next(err);
     }
+}
+
+export async function uploadAvatar(req, res) {
+  try {
+    const imageUrl = req.file?.path;
+    const publicId = req.file?.filename;
+
+    if (!imageUrl || !publicId) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const userId = req.user?.id || req.user?._id;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // ✅ borrar anterior
+    if (user.avatarPublicId) {
+      await cloudinary.uploader.destroy(user.avatarPublicId);
+    }
+
+    user.avatarUrl = imageUrl;
+    user.avatarPublicId = publicId;
+    await user.save();
+
+    return res.json({ user });
+  } catch (err) {
+    console.log("UPLOAD_AVATAR_ERR", err);
+    return res.status(500).json({ message: "Could not upload avatar" });
+  }
 }
