@@ -66,12 +66,13 @@ function verifiedBadge(ok) {
 }
 
 /**
- * Fix del avatar que “se borra” al refrescar:
- * - Persistimos el avatarUrl en localStorage.
- * - Al cargar /me, si viene avatarUrl -> lo guardamos.
- * - Si /me NO trae avatarUrl por algún motivo, usamos el fallback del localStorage.
+ * Fix avatar:
+ * - Persistimos avatarUrl en localStorage PERO POR USUARIO (key: ticketx_avatarUrl:<userId>)
+ * - Al cargar /me:
+ *   - si backend trae avatarUrl -> guardamos LS para ese userId
+ *   - si backend NO trae avatarUrl -> usamos fallback LS del mismo userId
  */
-const LS_AVATAR_KEY = "ticketx_avatarUrl";
+const LS_AVATAR_KEY = (userId) => `ticketx_avatarUrl:${userId}`;
 
 export function MyProfile() {
   const nav = useNavigate();
@@ -95,14 +96,8 @@ export function MyProfile() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarErr, setAvatarErr] = useState("");
 
-  // Persisted avatar fallback (para refresh)
-  const [persistedAvatarUrl, setPersistedAvatarUrl] = useState(() => {
-    try {
-      return localStorage.getItem(LS_AVATAR_KEY) || "";
-    } catch {
-      return "";
-    }
-  });
+  // Persisted avatar fallback (para refresh) — ya viene “scoped” por userId
+  const [persistedAvatarUrl, setPersistedAvatarUrl] = useState("");
 
   // Cache buster (si el browser cachea la misma URL)
   const [avatarV, setAvatarV] = useState(0);
@@ -114,28 +109,44 @@ export function MyProfile() {
       try {
         setLoading(true);
 
-        // 1) si ya tenemos algo persistido, “parcheamos” el ctxUser para que no parpadee
-        if (persistedAvatarUrl && ctxUser && !ctxUser.avatarUrl) {
-          const patched = { ...ctxUser, avatarUrl: persistedAvatarUrl };
-          setCtxUser?.(patched);
-        }
-
-        // 2) traer /me real
         const r = await getMeRequest();
         const u = r.data?.user ?? r.data ?? null;
 
         if (!alive) return;
 
-        setMe(u);
+        const userId = u?._id || u?.id;
+
+        // 1) leer LS SOLO para este userId
+        let cached = "";
+        if (userId) {
+          try {
+            cached = localStorage.getItem(LS_AVATAR_KEY(userId)) || "";
+          } catch (e) {
+            console.log("LS_READ_AVATAR_ERR", e);
+          }
+        }
+
+        // 2) si backend NO trae avatarUrl pero hay cache, lo usamos
+        const patched =
+          u && !u.avatarUrl && cached ? { ...u, avatarUrl: cached } : u;
+
+        setMe(patched);
+        setCtxUser?.(patched);
         setUsername(u?.username ?? "");
 
-        // 3) persistir avatar si vino del backend
-        if (u?.avatarUrl) {
+        // 3) persistir si backend trae avatarUrl (fuente de verdad)
+        if (userId && u?.avatarUrl) {
           try {
-            localStorage.setItem(LS_AVATAR_KEY, u.avatarUrl);
-          } catch {}
+            localStorage.setItem(LS_AVATAR_KEY(userId), u.avatarUrl);
+          } catch (e) {
+            console.log("LS_WRITE_AVATAR_ERR", e);
+          }
           setPersistedAvatarUrl(u.avatarUrl);
+        } else if (cached) {
+          setPersistedAvatarUrl(cached);
         }
+      } catch (err) {
+        console.log("GET_ME_ERR", err?.response?.data || err?.message);
       } finally {
         if (!alive) return;
         setLoading(false);
@@ -150,7 +161,6 @@ export function MyProfile() {
   }, []);
 
   const displayUser = useMemo(() => {
-    // Preferimos lo más “fresh”: me > ctxUser
     const base = me ?? ctxUser ?? null;
     if (!base) return null;
 
@@ -174,12 +184,17 @@ export function MyProfile() {
       setMe(u);
       setCtxUser?.(u);
 
-      if (u?.avatarUrl) {
+      const userId = u?._id || u?.id;
+      if (userId && u?.avatarUrl) {
         try {
-          localStorage.setItem(LS_AVATAR_KEY, u.avatarUrl);
-        } catch {}
+          localStorage.setItem(LS_AVATAR_KEY(userId), u.avatarUrl);
+        } catch (e) {
+          console.log("LS_WRITE_AVATAR_ERR", e);
+        }
         setPersistedAvatarUrl(u.avatarUrl);
       }
+    } catch (err) {
+      console.log("SAVE_PROFILE_ERR", err?.response?.data || err?.message);
     } finally {
       setSaving(false);
     }
@@ -188,6 +203,7 @@ export function MyProfile() {
   async function switchRole(nextRole) {
     try {
       setSwitching(true);
+
       const r = await updateRoleRequest(nextRole);
       const u = r.data?.user ?? null;
 
@@ -197,7 +213,7 @@ export function MyProfile() {
         setAccessToken(accessToken);
       }
 
-      // conservar avatar persistido por si el endpoint no lo trae
+      // mantener avatar (por si el endpoint no lo devuelve)
       const merged = u
         ? { ...u, avatarUrl: u.avatarUrl || persistedAvatarUrl }
         : u;
@@ -205,12 +221,17 @@ export function MyProfile() {
       setMe(merged);
       setCtxUser?.(merged);
 
-      if (merged?.avatarUrl) {
+      const userId = merged?._id || merged?.id;
+      if (userId && merged?.avatarUrl) {
         try {
-          localStorage.setItem(LS_AVATAR_KEY, merged.avatarUrl);
-        } catch {}
+          localStorage.setItem(LS_AVATAR_KEY(userId), merged.avatarUrl);
+        } catch (e) {
+          console.log("LS_WRITE_AVATAR_ERR", e);
+        }
         setPersistedAvatarUrl(merged.avatarUrl);
       }
+    } catch (err) {
+      console.log("SWITCH_ROLE_ERR", err?.response?.data || err?.message);
     } finally {
       setSwitching(false);
     }
@@ -218,13 +239,23 @@ export function MyProfile() {
 
   async function confirmDelete() {
     if (!canDelete) return;
+
     try {
+      // borrar LS de este user ANTES de borrarlo (todavía tenemos displayUser)
+      const userId = displayUser?._id || displayUser?.id;
+      if (userId) {
+        try {
+          localStorage.removeItem(LS_AVATAR_KEY(userId));
+        } catch (e) {
+          console.log("LS_REMOVE_AVATAR_ERR", e);
+        }
+      }
+
       await deleteMeRequest();
-      try {
-        localStorage.removeItem(LS_AVATAR_KEY);
-      } catch {}
       await logout?.();
       nav("/start");
+    } catch (err) {
+      console.log("DELETE_ME_ERR", err?.response?.data || err?.message);
     } finally {
       setDeleteOpen(false);
       setDeleteWord("");
@@ -232,8 +263,15 @@ export function MyProfile() {
   }
 
   async function resendVerification() {
-    await resendVerificationRequest(displayUser?.email);
-    window.open("/verify-email", "_blank", "noopener,noreferrer");
+    try {
+      await resendVerificationRequest(displayUser?.email);
+      window.open("/verify-email", "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.log(
+        "RESEND_VERIFICATION_ERR",
+        err?.response?.data || err?.message
+      );
+    }
   }
 
   function onPickAvatar(file) {
@@ -274,9 +312,8 @@ export function MyProfile() {
 
       const r = await uploadMyAvatarRequest(avatarFile);
 
-      // Soportamos ambas respuestas:
-      // A) { user: {...} }
-      // B) { avatarUrl: "..." } (por si tu controller lo devuelve así)
+      // A) { user }
+      // B) { avatarUrl }
       const u = r.data?.user ?? null;
       const avatarUrlFromApi = r.data?.avatarUrl;
 
@@ -287,9 +324,15 @@ export function MyProfile() {
         : null;
 
       if (nextUser?.avatarUrl) {
-        try {
-          localStorage.setItem(LS_AVATAR_KEY, nextUser.avatarUrl);
-        } catch {}
+        const userId = nextUser?._id || nextUser?.id;
+        if (userId) {
+          try {
+            localStorage.setItem(LS_AVATAR_KEY(userId), nextUser.avatarUrl);
+          } catch (e) {
+            console.log("LS_WRITE_AVATAR_ERR", e);
+          }
+        }
+
         setPersistedAvatarUrl(nextUser.avatarUrl);
 
         // cache bust
@@ -305,6 +348,7 @@ export function MyProfile() {
       clearAvatarPick();
     } catch (err) {
       setAvatarErr(err?.response?.data?.message || "Could not upload avatar.");
+      console.log("UPLOAD_AVATAR_ERR", err?.response?.data || err?.message);
     } finally {
       setAvatarUploading(false);
     }
@@ -327,7 +371,9 @@ export function MyProfile() {
   }
 
   const avatarSrc = displayUser?.avatarUrl
-    ? `${displayUser.avatarUrl}${displayUser.avatarUrl.includes("?") ? "&" : "?"}v=${avatarV}`
+    ? `${displayUser.avatarUrl}${
+        displayUser.avatarUrl.includes("?") ? "&" : "?"
+      }v=${avatarV}`
     : "";
 
   return (
@@ -355,10 +401,7 @@ export function MyProfile() {
                     src={avatarSrc}
                     alt="Avatar"
                     className="h-full w-full object-cover"
-                    onError={() => {
-                      // fallback final: si hay avatar persistido pero el src falla, quitamos cache buster
-                      setAvatarV((x) => x + 1);
-                    }}
+                    onError={() => setAvatarV((x) => x + 1)}
                   />
                 ) : (
                   <div className="text-3xl font-extrabold text-violet-200">
