@@ -9,20 +9,28 @@ const router = Router();
 
 // BUYER: ver mis tickets
 router.get(
-    "/tickets/me",
-    requireAuth,
-    requireRole("BUYER"),
-    ticketController.listMine
+  "/tickets/me",
+  requireAuth,
+  requireRole("BUYER"),
+  ticketController.listMine
+);
+
+// ORGANIZER: listar tickets de un evento
+router.get(
+  "/tickets/event/:eventId",
+  requireAuth,
+  requireRole("ORGANIZER"),
+  ticketController.listByEventForOrganizer
 );
 
 // ORGANIZER: check-in por código
 router.post(
-    "/tickets/check-in",
-    requireAuth,
-    requireRole("ORGANIZER"),
-    validate(checkInSchema),
-    requireTicketEventOwner,
-    ticketController.checkIn
+  "/tickets/check-in",
+  requireAuth,
+  requireRole("ORGANIZER"),
+  validate(checkInSchema),
+  requireTicketEventOwner,
+  ticketController.checkIn
 );
 
 export default router;

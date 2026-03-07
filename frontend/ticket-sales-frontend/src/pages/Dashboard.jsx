@@ -57,6 +57,7 @@ import {
   ClipboardList,
   Image as ImageIcon,
   X,
+  ScanLine,
 } from "lucide-react";
 
 /* =========================
@@ -172,8 +173,8 @@ export function Dashboard() {
   const [title, setTitle] = useState("");
   const [city, setCity] = useState("");
   const [venue, setVenue] = useState("");
-  const [startAt, setStartAt] = useState(""); // datetime-local
-  const [endAt, setEndAt] = useState(""); // datetime-local
+  const [startAt, setStartAt] = useState("");
+  const [endAt, setEndAt] = useState("");
 
   const [bannerUrl, setBannerUrl] = useState("");
   const [bannerFile, setBannerFile] = useState(null);
@@ -194,7 +195,6 @@ export function Dashboard() {
 
   const [editEventId, setEditEventId] = useState(null);
 
-  // event fields
   const [eTitle, setETitle] = useState("");
   const [eDescription, setEDescription] = useState("");
   const [eVenue, setEVenue] = useState("");
@@ -204,12 +204,10 @@ export function Dashboard() {
   const [eBannerUrl, setEBannerUrl] = useState("");
   const [eTags, setETags] = useState("");
 
-  // edit banner file/preview
   const [eBannerFile, setEBannerFile] = useState(null);
   const [eBannerPreview, setEBannerPreview] = useState("");
   const [eBannerUploading, setEBannerUploading] = useState(false);
 
-  // ticket types (existing + new)
   const [editTicketTypes, setEditTicketTypes] = useState([]);
 
   async function load() {
@@ -363,7 +361,6 @@ export function Dashboard() {
       const startIso = new Date(startAt).toISOString();
       const endIso = endAt ? new Date(endAt).toISOString() : undefined;
 
-      // 1) create event first (bannerUrl can be pasted URL)
       const evRes = await createEventRequest({
         title: title.trim(),
         city: city.trim() || undefined,
@@ -376,14 +373,12 @@ export function Dashboard() {
       const eventId = evRes?.data?.event?._id;
       if (!eventId) throw new Error("createEvent did not return event._id");
 
-      // 2) if user picked a file, upload AFTER create (needs eventId)
       if (bannerFile) {
         setBannerUploading(true);
         const uploadedUrl = await uploadEventBanner(eventId, bannerFile);
         await updateEventRequest(eventId, { bannerUrl: uploadedUrl });
       }
 
-      // 3) create ticket types
       for (const t of ticketDrafts) {
         await createTicketTypeRequest(eventId, {
           name: t.name.trim(),
@@ -414,7 +409,6 @@ export function Dashboard() {
       setEditEventOpen(true);
       setEditLoading(true);
 
-      // reset banner local file state
       setEBannerFile(null);
       if (eBannerPreview?.startsWith("blob:")) URL.revokeObjectURL(eBannerPreview);
       setEBannerPreview("");
@@ -466,7 +460,6 @@ export function Dashboard() {
 
     setEditErr("");
     setEBannerFile(file);
-    // local preview
     if (eBannerPreview?.startsWith("blob:")) URL.revokeObjectURL(eBannerPreview);
     setEBannerPreview(URL.createObjectURL(file));
   }
@@ -487,7 +480,6 @@ export function Dashboard() {
 
       const url = await uploadEventBanner(editEventId, eBannerFile);
 
-      // immediately update input with cloudinary URL (you can still Save later)
       setEBannerUrl(url);
       clearEditBannerLocal();
     } catch (err) {
@@ -547,7 +539,6 @@ export function Dashboard() {
       setEditSaving(true);
       setEditErr("");
 
-      // Update event fields
       await updateEventRequest(editEventId, {
         title: eTitle.trim() || undefined,
         description: eDescription.trim() || undefined,
@@ -559,7 +550,6 @@ export function Dashboard() {
         tags: stringToTags(eTags),
       });
 
-      // Sync ticket types
       for (const t of editTicketTypes) {
         if (!t.name?.trim()) throw new Error("Ticket type name is required.");
         if (!Number.isFinite(Number(t.price)) || Number(t.price) < 0)
@@ -601,9 +591,6 @@ export function Dashboard() {
 
   const canPublish = (insights?.ticketTypes?.length || 0) > 0;
 
-  /* =========================
-      Render
-  ========================= */
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       {/* TOP BAR */}
@@ -811,6 +798,12 @@ export function Dashboard() {
                                       Edit event
                                     </DropdownMenuItem>
 
+                                    <DropdownMenuItem asChild>
+                                      <Link to={`/check-in?eventId=${e.id}`}>
+                                        Open Check-In
+                                      </Link>
+                                    </DropdownMenuItem>
+
                                     {e.status !== "PUBLISHED" ? (
                                       <DropdownMenuItem onClick={() => setStatus(e.id, "PUBLISHED")}>
                                         Publish
@@ -924,6 +917,16 @@ export function Dashboard() {
                         >
                           Edit event (details + tickets)
                         </Button>
+
+                        <Button
+                          asChild
+                          className="h-11 rounded-2xl bg-emerald-600 hover:bg-emerald-500"
+                        >
+                          <Link to={`/check-in?eventId=${insights.event.id}`}>
+                            <ScanLine className="mr-2 h-4 w-4" />
+                            Open Check-In
+                          </Link>
+                        </Button>
                       </div>
                     </div>
 
@@ -1035,7 +1038,6 @@ export function Dashboard() {
                 />
               </div>
 
-              {/* Banner */}
               <div className="grid gap-2">
                 <label className="text-xs uppercase tracking-widest text-white/60">
                   Event image (optional)
@@ -1180,7 +1182,6 @@ export function Dashboard() {
 
               <Separator className="my-1 bg-white/10" />
 
-              {/* Ticket drafts */}
               <div className="grid gap-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs uppercase tracking-widest text-white/60">
@@ -1375,7 +1376,6 @@ export function Dashboard() {
               </div>
             ) : (
               <div className="grid gap-4">
-                {/* EVENT FIELDS */}
                 <div className="grid gap-2">
                   <label className="text-xs uppercase tracking-widest text-white/60">
                     Title
@@ -1447,13 +1447,11 @@ export function Dashboard() {
                   </div>
                 </div>
 
-                {/* Banner upload + URL */}
                 <div className="grid gap-2">
                   <label className="text-xs uppercase tracking-widest text-white/60">
                     Banner image
                   </label>
 
-                  {/* preview (either newly picked file preview OR current url) */}
                   {eBannerPreview || eBannerUrl ? (
                     <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30">
                       <img
@@ -1548,7 +1546,6 @@ export function Dashboard() {
 
                 <Separator className="my-2 bg-white/10" />
 
-                {/* TICKET TYPES */}
                 <div className="flex items-center justify-between">
                   <div className="text-xs uppercase tracking-widest text-white/40">
                     Ticket Types
@@ -1576,7 +1573,6 @@ export function Dashboard() {
                           className="rounded-2xl border border-white/10 bg-black/20 p-4"
                         >
                           <div className="grid gap-3 md:grid-cols-[1.2fr_.8fr_.6fr_auto]">
-                            {/* NAME */}
                             <div className="grid gap-1">
                               <Input
                                 className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
@@ -1591,7 +1587,6 @@ export function Dashboard() {
                               </p>
                             </div>
 
-                            {/* PRICE */}
                             <div className="grid gap-1">
                               <Input
                                 type="number"
@@ -1607,7 +1602,6 @@ export function Dashboard() {
                               </p>
                             </div>
 
-                            {/* CAPACITY */}
                             <div className="grid gap-1">
                               <Input
                                 type="number"
@@ -1619,11 +1613,10 @@ export function Dashboard() {
                                 }
                               />
                               <p className="text-[11px] text-white/40 leading-4">
-                                Max available (must be ≥ sold: {Number(t.soldCount || 0)}).
+                                Max available (must be ≥ sold: {number(t.soldCount || 0)}).
                               </p>
                             </div>
 
-                            {/* DELETE */}
                             <div className="flex items-end justify-end gap-2">
                               <Button
                                 type="button"
@@ -1687,7 +1680,7 @@ export function Dashboard() {
 }
 
 /* =========================
-    Small UI components
+   Small UI components
 ========================= */
 function KpiCard({ loading, icon, title, value, hint }) {
   return (

@@ -14,7 +14,7 @@ import { VerifyEmail } from "../pages/VerifyEmail.jsx";
 import { Register } from "../pages/Register.jsx";
 import { BuyerRoute } from "./BuyerRoute.jsx";
 import { MyEvents } from "@/pages/MyEvents.jsx";
-
+import { TicketCheckIn } from "@/pages/TicketCheckIn";
 // ✅ NUEVO: OAuth callback page
 import OAuthCallback from "@/auth/oauth-callback.jsx";
 
@@ -69,7 +69,14 @@ export function AppRouter() {
           </OrganizerRoute>
         }
       />
-
+      <Route
+        path="/check-in"
+        element={
+          <OrganizerRoute>
+            <TicketCheckIn />
+          </OrganizerRoute>
+        }
+      />
       {/* 404 */}
       <Route path="*" element={<div className="p-6 text-white">404</div>} />
     </Routes>

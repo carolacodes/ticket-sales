@@ -24,7 +24,8 @@ router.post(
     validate(createEventSchema),
     eventController.create
 );
-
+// públicos
+router.get("/events/published", eventController.listPublishedEvents);
 router.get(
     "/events/me",
     requireAuth,

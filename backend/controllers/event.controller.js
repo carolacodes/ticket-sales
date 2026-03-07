@@ -4,6 +4,7 @@ import {
     findEventById,
     findEventsByOrganizerId,
     updateEventById,
+    listPublishedEventsCatalog,
 } from "../services/event.service.js";
 import { getEventSummary } from "../services/eventSummary.service.js";
 import { getOrganizerDashboardSummary } from "../services/eventDashboard.service.js";
@@ -495,5 +496,41 @@ export async function uploadBanner(req, res) {
   } catch (err) {
     console.log("UPLOAD_BANNER_ERR", err);
     return res.status(500).json({ message: "Could not upload banner" });
+  }
+}
+
+
+export async function listPublishedEvents(req, res, next) {
+  try {
+    const {
+      q = "",
+      tags = "",
+      dateFrom = "",
+      dateTo = "",
+      minPrice = "",
+      maxPrice = "",
+      page = 1,
+      limit = 12,
+    } = req.query;
+
+    const parsedTags = String(tags || "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    const result = await listPublishedEventsCatalog({
+      q,
+      tags: parsedTags,
+      dateFrom,
+      dateTo,
+      minPrice,
+      maxPrice,
+      page,
+      limit,
+    });
+
+    return res.status(200).json(result);
+  } catch (err) {
+    next(err);
   }
 }

@@ -1,11 +1,9 @@
 import { api } from "./axios.js";
 
 // Público: eventos publicados
-export function listPublishedEvents(params = {}) {
-  // params: page, limit, q, from, to, tags...
-    return api.get("/events", { params });
+export function listPublishedEvents(params) {
+  return api.get("/events/published", { params });
 }
-
 // Público: detalle
 export function getEventById(id) {
     return api.get(`/events/${id}`);
