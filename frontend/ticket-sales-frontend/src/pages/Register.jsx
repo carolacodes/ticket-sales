@@ -64,7 +64,7 @@ export function Register() {
     password === confirm;
 
   function onGoogleRegister() {
-    // opcional: pasar role por query (por si después lo querés usar en backend)
+    // pasamos el role seleccionado para que el backend cree la cuenta con ese rol
     const url = new URL(googleOAuthUrl());
     url.searchParams.set("role", role);
     window.location.href = url.toString();
