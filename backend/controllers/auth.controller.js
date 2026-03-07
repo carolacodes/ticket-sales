@@ -117,68 +117,84 @@ export async function register(req, res, next) {
 }
 
 export async function login(req, res, next) {
-    try {
-        const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-        if (!email || !password) {
-            return res.status(400).json({ message: "Missing fields" });
-        }
-
-        const normalizedEmail = email.toLowerCase().trim();
-
-        const user = await findUserByEmail(normalizedEmail);
-        if (!user) return res.status(401).json({ message: "Invalid credentials" });
-
-        const ok = await bcrypt.compare(password, user.passwordHash);
-        if (!ok) return res.status(401).json({ message: "Invalid credentials" });
-
-        await updateLastLogin(user._id);
-
-        // ✅ CAMBIO: ahora se llama con { userId, role }
-        const accessToken = signAccessToken({ userId: user._id.toString(), role: user.role });
-        const refreshToken = signRefreshToken({ userId: user._id.toString(), role: user.role });
-
-        res.cookie("refreshToken", refreshToken, refreshCookieOptions);
-
-        // ✅ Login alert email (solo si emailVerified)
-        if (user.emailVerified) {
-            try {
-                const when = new Date().toLocaleString("es-AR", {
-                timeZone: "America/Argentina/Cordoba",
-                });
-
-                const ip = getClientIp(req);
-                const userAgent = req.get("user-agent") || "";
-
-                const html = loginAlertEmail({
-                username: user.username,
-                when,
-                ip,
-                userAgent,
-                });
-
-                const to = process.env.EMAIL_TO_OVERRIDE || user.email;
-
-                const sent = await sendEmail({
-                to,
-                subject: "Nuevo inicio de sesión",
-                html,
-                });
-
-                console.log("LOGIN_ALERT_SENT", sent?.id);
-            } catch (e) {
-                console.error("LOGIN_ALERT_FAILED", e.message);
-            }
-        }
-
-
-        return res.status(200).json({
-            accessToken,
-            user: sanitizeUser(user),
-        });
-    } catch (err) {
-        next(err);
+    if (!email || !password) {
+      return res.status(400).json({ message: "Missing fields" });
     }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await findUserByEmail(normalizedEmail);
+    if (!user) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    // ✅ cuenta creada con Google / OAuth y sin contraseña local
+    if (!user.passwordHash) {
+      return res.status(400).json({
+        message:
+          "This account was created with Google. Please sign in with Google or reset your password.",
+      });
+    }
+
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    await updateLastLogin(user._id);
+
+    const accessToken = signAccessToken({
+      userId: user._id.toString(),
+      role: user.role,
+    });
+
+    const refreshToken = signRefreshToken({
+      userId: user._id.toString(),
+      role: user.role,
+    });
+
+    res.cookie("refreshToken", refreshToken, refreshCookieOptions);
+
+    if (user.emailVerified) {
+      try {
+        const when = new Date().toLocaleString("es-AR", {
+          timeZone: "America/Argentina/Cordoba",
+        });
+
+        const ip = getClientIp(req);
+        const userAgent = req.get("user-agent") || "";
+
+        const html = loginAlertEmail({
+          username: user.username,
+          when,
+          ip,
+          userAgent,
+        });
+
+        const to = process.env.EMAIL_TO_OVERRIDE || user.email;
+
+        const sent = await sendEmail({
+          to,
+          subject: "Nuevo inicio de sesión",
+          html,
+        });
+
+        console.log("LOGIN_ALERT_SENT", sent?.id);
+      } catch (e) {
+        console.error("LOGIN_ALERT_FAILED", e.message);
+      }
+    }
+
+    return res.status(200).json({
+      accessToken,
+      user: sanitizeUser(user),
+    });
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function refresh(req, res) {
