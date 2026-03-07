@@ -25,10 +25,12 @@ const oauthRoleCookieOptions = {
   path: "/api/auth/google",
 };
 
+const isProd = process.env.NODE_ENV === "production";
+
 const refreshCookieOptions = {
   httpOnly: true,
-  sameSite: "lax",
-  secure: process.env.NODE_ENV === "production",
+  sameSite: isProd ? "none" : "lax",
+  secure: isProd,
   path: "/api/auth/refresh",
 };
 
