@@ -15,6 +15,8 @@ import { Register } from "../pages/Register.jsx";
 import { BuyerRoute } from "./BuyerRoute.jsx";
 import { MyEvents } from "@/pages/MyEvents.jsx";
 import { TicketCheckIn } from "@/pages/TicketCheckIn";
+import { ForgotPassword } from "@/pages/ForgotPassword";
+import { ResetPassword } from "@/pages/ResetPassword";
 // ✅ NUEVO: OAuth callback page
 import OAuthCallback from "@/auth/oauth-callback.jsx";
 
@@ -35,6 +37,11 @@ export function AppRouter() {
       <Route path="/events/:id" element={<EventDetail />} />
       <Route path="/checkout/:id" element={<Checkout />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
+
+      {/* RESET AND CHANGE PASSWORD flow */}
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+
       <Route
         path="/my-tickets"
         element={

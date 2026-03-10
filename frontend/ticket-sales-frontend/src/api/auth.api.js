@@ -34,6 +34,16 @@ export function resetPasswordRequest({ token, password }) {
     return api.post("/auth/reset-password", { token, password });
 }
 
+// ✅ Change password (user must be logged in)
+export function changePasswordRequest({ currentPassword, newPassword }) {
+  return api.post("/auth/change-password", { currentPassword, newPassword });
+}
+
+
+export function setPasswordRequest({ newPassword }) {
+  return api.post("/auth/set-password", { newPassword });
+}
+
 // Google OAuth: redirige al backend
 export function googleOAuthUrl() {
     const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";

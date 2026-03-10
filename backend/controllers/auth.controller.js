@@ -34,15 +34,19 @@ const refreshCookieOptions = {
     path: "/api/auth/refresh",
 };
 
-const sanitizeUser = (user) => ({
+export function sanitizeUser(user) {
+  return {
     id: user._id,
-    username: user.username,
     email: user.email,
+    username: user.username,
     role: user.role,
     emailVerified: user.emailVerified,
-    lastLoginAt: user.lastLoginAt,
+    avatarUrl: user.avatarUrl || "",
     createdAt: user.createdAt,
-});
+    lastLoginAt: user.lastLoginAt,
+    hasPassword: !!user.passwordHash,
+  };
+}
 
 export async function register(req, res, next) {
     try {
@@ -96,7 +100,7 @@ export async function register(req, res, next) {
         });
 
         // 5) (DEV) para no mandar a emails reales mientras probás
-        const to = process.env.EMAIL_TO_OVERRIDE || user.email;
+        const to = user.email;
 
         // 6) enviar email con Resend
         try {
@@ -174,10 +178,8 @@ export async function login(req, res, next) {
           userAgent,
         });
 
-        const to = process.env.EMAIL_TO_OVERRIDE || user.email;
-
         const sent = await sendEmail({
-          to,
+          to: user.email,
           subject: "Nuevo inicio de sesión",
           html,
         });
@@ -296,7 +298,7 @@ export async function resendVerification(req, res, next) {
         });
 
         // 5) override en dev (para no mandar real)
-        const to = process.env.EMAIL_TO_OVERRIDE || user.email;
+        const to = user.email;
 
         // 6) enviar
         try {
@@ -344,7 +346,7 @@ export async function forgotPassword(req, res, next) {
         // 4) email
         const html = resetPasswordEmail({ username: user.username, resetUrl });
 
-        const to = process.env.EMAIL_TO_OVERRIDE || user.email;
+        const to = user.email;
 
         try {
             const sent = await sendEmail({
@@ -398,7 +400,7 @@ export async function resetPassword(req, res, next) {
                 userAgent,
             });
 
-            const to = process.env.EMAIL_TO_OVERRIDE || updatedUser.email;
+            const to = updatedUser.email;
 
             const sent = await sendEmail({
                 to,
@@ -414,4 +416,125 @@ export async function resetPassword(req, res, next) {
     } catch (err) {
         next(err);
     }
+}
+
+export async function changePassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // si la cuenta fue creada con Google y no tiene password local
+    if (!user.passwordHash) {
+      return res.status(400).json({
+        message:
+          "This account does not have a local password yet. Please use password reset first.",
+      });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+
+    if (!isMatch) {
+      return res.status(400).json({ message: "Current password is incorrect" });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    user.passwordHash = newHash;
+    await user.save();
+
+    // email de seguridad
+    try {
+      const when = new Date().toLocaleString("es-AR", {
+        timeZone: "America/Argentina/Cordoba",
+      });
+
+      const ip = getClientIp(req);
+      const userAgent = req.get("user-agent") || "N/A";
+
+      const html = passwordChangedEmail({
+        username: user.username,
+        when,
+        ip,
+        userAgent,
+      });
+
+      const sent = await sendEmail({
+        to: user.email,
+        subject: "Contraseña actualizada",
+        html,
+      });
+
+      console.log("PASSWORD_CHANGED_EMAIL_SENT", sent?.id);
+    } catch (e) {
+      console.error("PASSWORD_CHANGED_EMAIL_FAILED", e.message);
+    }
+
+    return res.status(200).json({
+      message: "Password updated successfully",
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+
+export async function setPassword(req, res, next) {
+  try {
+    const { newPassword } = req.body;
+
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // ya tiene password
+    if (user.passwordHash) {
+      return res.status(400).json({
+        message:
+          "This account already has a password. Please use change password.",
+      });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    user.passwordHash = newHash;
+
+    await user.save();
+
+    try {
+      const when = new Date().toLocaleString("es-AR", {
+        timeZone: "America/Argentina/Cordoba",
+      });
+
+      const ip = req.ip || "N/A";
+      const userAgent = req.get("user-agent") || "N/A";
+
+      const html = passwordChangedEmail({
+        username: user.username,
+        when,
+        ip,
+        userAgent,
+      });
+
+      await sendEmail({
+        to: user.email,
+        subject: "Contraseña creada correctamente",
+        html,
+      });
+    } catch (e) {
+      console.error("SET_PASSWORD_EMAIL_FAILED", e.message);
+    }
+
+    return res.status(200).json({
+      message: "Password created successfully",
+    });
+  } catch (err) {
+    next(err);
+  }
 }

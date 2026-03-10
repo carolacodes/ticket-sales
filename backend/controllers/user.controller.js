@@ -7,15 +7,19 @@ import {
 import { signAccessToken, signRefreshToken } from "../libs/jwt.js";
 import User from "../models/user.model.js";
 import cloudinary from "../config/cloudinary.js";
-const sanitizeUser = (user) => ({
+export function sanitizeUser(user) {
+  return {
     id: user._id,
-    username: user.username,
     email: user.email,
+    username: user.username,
     role: user.role,
     emailVerified: user.emailVerified,
-    lastLoginAt: user.lastLoginAt,
+    avatarUrl: user.avatarUrl || "",
     createdAt: user.createdAt,
-});
+    lastLoginAt: user.lastLoginAt,
+    hasPassword: !!user.passwordHash,
+  };
+}
 
 const isProd = process.env.NODE_ENV === "production";
 const refreshCookieOptions = {

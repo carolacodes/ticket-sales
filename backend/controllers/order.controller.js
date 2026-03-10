@@ -99,81 +99,78 @@ export async function listMine(req, res, next) {
  * - (más adelante) emite tickets
  */
 export async function confirm(req, res, next) {
-    const session = await mongoose.startSession();
-    try {
-        session.startTransaction();
+  const session = await mongoose.startSession();
 
-        const order = await findOrderById(req.params.id, session);
-        if (!order) {
-        await session.abortTransaction();
-        return res.status(404).json({ message: "Order not found" });
-        }
+  try {
+    session.startTransaction();
 
-        // Owner-only (si ya usaste requireOrderOwner, esto es redundante)
-        if (order.userId.toString() !== req.user.id) {
-        await session.abortTransaction();
-        return res.status(403).json({ message: "Forbidden" });
-        }
-
-        if (order.status !== "PENDING") {
-        await session.abortTransaction();
-        return res.status(400).json({ message: "Order is not pending" });
-        }
-
-        // Si expira
-        if (order.expiresAt && new Date() > new Date(order.expiresAt)) {
-        await updateOrderById(order._id, { status: "EXPIRED" }, session);
-        await session.commitTransaction();
-        return res.status(400).json({ message: "Order expired" });
-        }
-
-        // 1) Descontar stock de cada ticketType de forma segura
-        for (const item of order.items) {
-        const qty = item.qty;
-
-        // filtro con $expr: soldCount + qty <= capacity
-        const updated = await TicketType.findOneAndUpdate(
-            {
-            _id: item.ticketTypeId,
-            eventId: order.eventId,
-            $expr: { $lte: [{ $add: ["$soldCount", qty] }, "$capacity"] },
-            },
-            { $inc: { soldCount: qty } },
-            { new: true, session }
-        );
-
-        if (!updated) {
-            await session.abortTransaction();
-            return res.status(409).json({ message: "Not enough stock to confirm order" });
-        }
+    const order = await findOrderById(req.params.id, session);
+    if (!order) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: "Order not found" });
     }
 
-        // 2) Marcar orden como pagada
-        const paidOrder = await updateOrderById(
-        order._id,
-        { status: "PAID", paidAt: new Date() },
-        session
-        );
+    // Owner-only (si ya usaste requireOrderOwner, esto es redundante)
+    if (order.userId.toString() !== req.user.id) {
+      await session.abortTransaction();
+      return res.status(403).json({ message: "Forbidden" });
+    }
 
-    // 3) (Preparado) Emitir tickets aquí:
-    // TODO: crear Ticket docs (uno por unidad) cuando hagas Ticket model/service.
-    // await createTicketsFromOrder(paidOrder, session);
-    
-    // Crear tickets (uno por unidad)
+    if (order.status !== "PENDING") {
+      await session.abortTransaction();
+      return res.status(400).json({ message: "Order is not pending" });
+    }
+
+    // Si expira
+    if (order.expiresAt && new Date() > new Date(order.expiresAt)) {
+      await updateOrderById(order._id, { status: "EXPIRED" }, session);
+      await session.commitTransaction();
+      return res.status(400).json({ message: "Order expired" });
+    }
+
+    // 1) Descontar stock de cada ticketType de forma segura
+    for (const item of order.items) {
+      const qty = item.qty;
+
+      // filtro con $expr: soldCount + qty <= capacity
+      const updated = await TicketType.findOneAndUpdate(
+        {
+          _id: item.ticketTypeId,
+          eventId: order.eventId,
+          $expr: { $lte: [{ $add: ["$soldCount", qty] }, "$capacity"] },
+        },
+        { $inc: { soldCount: qty } },
+        { new: true, session }
+      );
+
+      if (!updated) {
+        await session.abortTransaction();
+        return res.status(409).json({ message: "Not enough stock to confirm order" });
+      }
+    }
+
+    // 2) Marcar orden como pagada
+    const paidOrder = await updateOrderById(
+      order._id,
+      { status: "PAID", paidAt: new Date() },
+      session
+    );
+
+    // 3) Crear tickets (uno por unidad)
     const ticketsToCreate = [];
 
     for (const item of order.items) {
-    for (let i = 0; i < item.qty; i++) {
+      for (let i = 0; i < item.qty; i++) {
         ticketsToCreate.push({
-        orderId: order._id,
-        eventId: order.eventId,
-        ticketTypeId: item.ticketTypeId,
-        userId: order.userId,
-        code: uuidv4(),
-        status: "VALID",
-        checkedInAt: null,
+          orderId: order._id,
+          eventId: order.eventId,
+          ticketTypeId: item.ticketTypeId,
+          userId: order.userId,
+          code: uuidv4(),
+          status: "VALID",
+          checkedInAt: null,
         });
-    }
+      }
     }
 
     // insertMany en la misma transacción
@@ -181,48 +178,51 @@ export async function confirm(req, res, next) {
 
     await session.commitTransaction();
 
-
     // ✅ Email fuera de la transacción
     try {
-        const [buyer, event, ticketTypes] = await Promise.all([
-            User.findById(order.userId).select("email username"),
-            Event.findById(order.eventId).select("title"),
-            TicketType.find({ _id: { $in: order.items.map((i) => i.ticketTypeId) } }).select("name"),
-        ]);
+      const [buyer, event, ticketTypes] = await Promise.all([
+        User.findById(order.userId).select("email username"),
+        Event.findById(order.eventId).select("title"),
+        TicketType.find({
+          _id: { $in: order.items.map((i) => i.ticketTypeId) },
+        }).select("name"),
+      ]);
 
-        // Map ticketTypeId -> name
-        const ttMap = new Map(ticketTypes.map((tt) => [tt._id.toString(), tt.name]));
+      if (!buyer?.email) {
+        throw new Error("Buyer email not found");
+      }
 
-        // ticketsToCreate ya tiene code + ticketTypeId
-        const emailTickets = ticketsToCreate.map((t) => ({
-            code: t.code,
-            ticketTypeName: ttMap.get(t.ticketTypeId.toString()) || "Ticket",
-        }));
+      // Map ticketTypeId -> name
+      const ttMap = new Map(ticketTypes.map((tt) => [tt._id.toString(), tt.name]));
 
-        const html = orderConfirmedEmail({
-            eventTitle: event?.title || "Evento",
-            orderId: paidOrder._id.toString(),
-            buyerUsername: buyer?.username || "",
-            tickets: emailTickets,
-        });
+      const emailTickets = ticketsToCreate.map((t) => ({
+        code: t.code,
+        ticketTypeName: ttMap.get(t.ticketTypeId.toString()) || "Ticket",
+      }));
 
-        const sent = await sendEmail({
-            // ✅ TEST: usar una dirección especial de Resend
-            to: "delivered@resend.dev",
-            subject: `Confirmación de compra - ${event?.title || "Evento"}`,
-            html,
-        });
+      const html = orderConfirmedEmail({
+        eventTitle: event?.title || "Evento",
+        orderId: paidOrder._id.toString(),
+        buyerUsername: buyer?.username || "",
+        tickets: emailTickets,
+      });
 
-        console.log("EMAIL_SENT", sent?.id);
+      const sent = await sendEmail({
+        to: buyer.email,
+        subject: `Confirmación de compra - ${event?.title || "Evento"}`,
+        html,
+      });
+
+      console.log("EMAIL_SENT", sent?.id);
     } catch (e) {
-        console.error("EMAIL_SEND_FAILED", e.message);
+      console.error("EMAIL_SEND_FAILED", e.message);
     }
 
     return res.status(200).json({ order: paidOrder });
-    } catch (err) {
-        await session.abortTransaction();
-        next(err);
-    } finally {
-        session.endSession();
-    }
+  } catch (err) {
+    await session.abortTransaction();
+    next(err);
+  } finally {
+    session.endSession();
+  }
 }

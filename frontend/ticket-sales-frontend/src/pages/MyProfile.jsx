@@ -1,4 +1,3 @@
-// MyProfile.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -11,15 +10,29 @@ import {
   uploadMyAvatarRequest,
 } from "@/api/user.api";
 
+import {
+  resendVerificationRequest,
+  changePasswordRequest,
+  setPasswordRequest,
+  forgotPasswordRequest,
+} from "@/api/auth.api";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { resendVerificationRequest } from "@/api/auth.api";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { AlertTriangle, CheckCircle2, Shield, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Shield,
+  Trash2,
+  Eye,
+  EyeOff,
+  KeyRound,
+} from "lucide-react";
 
 /* =========================
    Helpers
@@ -54,8 +67,9 @@ function formatDate(iso) {
 }
 
 function roleBadge(role) {
-  if (role === "ORGANIZER")
+  if (role === "ORGANIZER") {
     return "border-violet-500/25 bg-violet-600/10 text-violet-200";
+  }
   return "border-white/10 bg-white/5 text-white/80";
 }
 
@@ -65,13 +79,6 @@ function verifiedBadge(ok) {
     : "border-amber-500/20 bg-amber-500/10 text-amber-200";
 }
 
-/**
- * Fix avatar:
- * - Persistimos avatarUrl en localStorage PERO POR USUARIO (key: ticketx_avatarUrl:<userId>)
- * - Al cargar /me:
- *   - si backend trae avatarUrl -> guardamos LS para ese userId
- *   - si backend NO trae avatarUrl -> usamos fallback LS del mismo userId
- */
 const LS_AVATAR_KEY = (userId) => `ticketx_avatarUrl:${userId}`;
 
 export function MyProfile() {
@@ -89,18 +96,32 @@ export function MyProfile() {
   const [deleteWord, setDeleteWord] = useState("");
   const canDelete = deleteWord.trim().toUpperCase() === "DELETE";
 
-  // Avatar upload modal state
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState("");
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarErr, setAvatarErr] = useState("");
 
-  // Persisted avatar fallback (para refresh) — ya viene “scoped” por userId
   const [persistedAvatarUrl, setPersistedAvatarUrl] = useState("");
-
-  // Cache buster (si el browser cachea la misma URL)
   const [avatarV, setAvatarV] = useState(0);
+
+  // Security
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordErr, setPasswordErr] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+
+  // Forgot password
+  const [forgotSending, setForgotSending] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState("");
+  const [forgotErr, setForgotErr] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -116,7 +137,6 @@ export function MyProfile() {
 
         const userId = u?._id || u?.id;
 
-        // 1) leer LS SOLO para este userId
         let cached = "";
         if (userId) {
           try {
@@ -126,15 +146,12 @@ export function MyProfile() {
           }
         }
 
-        // 2) si backend NO trae avatarUrl pero hay cache, lo usamos
-        const patched =
-          u && !u.avatarUrl && cached ? { ...u, avatarUrl: cached } : u;
+        const patched = u && !u.avatarUrl && cached ? { ...u, avatarUrl: cached } : u;
 
         setMe(patched);
         setCtxUser?.(patched);
         setUsername(u?.username ?? "");
 
-        // 3) persistir si backend trae avatarUrl (fuente de verdad)
         if (userId && u?.avatarUrl) {
           try {
             localStorage.setItem(LS_AVATAR_KEY(userId), u.avatarUrl);
@@ -165,15 +182,52 @@ export function MyProfile() {
     if (!base) return null;
 
     const avatarUrl = base.avatarUrl || persistedAvatarUrl || "";
-    return { ...base, avatarUrl };
+    return {
+      ...base,
+      avatarUrl,
+      hasPassword: !!base?.hasPassword,
+    };
   }, [me, ctxUser, persistedAvatarUrl]);
 
-  // cleanup preview blob url
+  const passwordsMatch = newPassword === confirmNewPassword;
+
+  const canChangePassword =
+    currentPassword.trim() &&
+    newPassword.trim() &&
+    confirmNewPassword.trim() &&
+    passwordsMatch;
+
+  const canSetPassword =
+    newPassword.trim() &&
+    confirmNewPassword.trim() &&
+    passwordsMatch;
+
   useEffect(() => {
     return () => {
-      if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
+      if (avatarPreview?.startsWith("blob:")) {
+        URL.revokeObjectURL(avatarPreview);
+      }
     };
   }, [avatarPreview]);
+
+  function clearSecurityMessages() {
+    setPasswordErr("");
+    setPasswordSuccess("");
+  }
+
+  function clearForgotMessages() {
+    setForgotErr("");
+    setForgotSuccess("");
+  }
+
+  function resetSecurityForm() {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setShowCurrentPass(false);
+    setShowNewPass(false);
+    setShowConfirmPass(false);
+  }
 
   async function saveProfile() {
     try {
@@ -213,10 +267,7 @@ export function MyProfile() {
         setAccessToken(accessToken);
       }
 
-      // mantener avatar (por si el endpoint no lo devuelve)
-      const merged = u
-        ? { ...u, avatarUrl: u.avatarUrl || persistedAvatarUrl }
-        : u;
+      const merged = u ? { ...u, avatarUrl: u.avatarUrl || persistedAvatarUrl } : u;
 
       setMe(merged);
       setCtxUser?.(merged);
@@ -241,7 +292,6 @@ export function MyProfile() {
     if (!canDelete) return;
 
     try {
-      // borrar LS de este user ANTES de borrarlo (todavía tenemos displayUser)
       const userId = displayUser?._id || displayUser?.id;
       if (userId) {
         try {
@@ -267,10 +317,101 @@ export function MyProfile() {
       await resendVerificationRequest(displayUser?.email);
       window.open("/verify-email", "_blank", "noopener,noreferrer");
     } catch (err) {
+      console.log("RESEND_VERIFICATION_ERR", err?.response?.data || err?.message);
+    }
+  }
+
+  async function handleChangePassword(e) {
+    e.preventDefault();
+
+    if (!passwordsMatch) {
+      setPasswordErr("New passwords do not match.");
+      setPasswordSuccess("");
+      return;
+    }
+
+    try {
+      setPasswordSaving(true);
+      clearSecurityMessages();
+      clearForgotMessages();
+
+      await changePasswordRequest({
+        currentPassword,
+        newPassword,
+      });
+
+      setPasswordSuccess("Password updated successfully.");
+      resetSecurityForm();
+    } catch (err) {
+      setPasswordErr(
+        err?.response?.data?.message || "Could not update password."
+      );
+      setPasswordSuccess("");
+      console.log("CHANGE_PASSWORD_ERR", err?.response?.data || err?.message);
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
+  async function handleSetPassword(e) {
+    e.preventDefault();
+
+    if (!passwordsMatch) {
+      setPasswordErr("Passwords do not match.");
+      setPasswordSuccess("");
+      return;
+    }
+
+    try {
+      setPasswordSaving(true);
+      clearSecurityMessages();
+      clearForgotMessages();
+
+      await setPasswordRequest({
+        newPassword,
+      });
+
+      const nextUser = displayUser
+        ? { ...displayUser, hasPassword: true }
+        : displayUser;
+
+      if (nextUser) {
+        setMe(nextUser);
+        setCtxUser?.(nextUser);
+      }
+
+      setPasswordSuccess("Password created successfully.");
+      resetSecurityForm();
+    } catch (err) {
+      setPasswordErr(
+        err?.response?.data?.message || "Could not create password."
+      );
+      setPasswordSuccess("");
+      console.log("SET_PASSWORD_ERR", err?.response?.data || err?.message);
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    try {
+      setForgotSending(true);
+      clearForgotMessages();
+      clearSecurityMessages();
+
+      await forgotPasswordRequest(displayUser?.email);
+
+      setForgotSuccess("We sent a password reset link to your email.");
+    } catch (err) {
+      setForgotErr(
+        err?.response?.data?.message || "Could not send reset email."
+      );
       console.log(
-        "RESEND_VERIFICATION_ERR",
+        "FORGOT_PASSWORD_FROM_PROFILE_ERR",
         err?.response?.data || err?.message
       );
+    } finally {
+      setForgotSending(false);
     }
   }
 
@@ -289,14 +430,18 @@ export function MyProfile() {
     setAvatarErr("");
     setAvatarFile(file);
 
-    if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
+    if (avatarPreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(avatarPreview);
+    }
     setAvatarPreview(URL.createObjectURL(file));
   }
 
   function clearAvatarPick() {
     setAvatarFile(null);
     setAvatarErr("");
-    if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
+    if (avatarPreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(avatarPreview);
+    }
     setAvatarPreview("");
   }
 
@@ -312,15 +457,16 @@ export function MyProfile() {
 
       const r = await uploadMyAvatarRequest(avatarFile);
 
-      // A) { user }
-      // B) { avatarUrl }
       const u = r.data?.user ?? null;
       const avatarUrlFromApi = r.data?.avatarUrl;
 
       const nextUser = u
         ? u
         : displayUser
-        ? { ...displayUser, avatarUrl: avatarUrlFromApi || displayUser.avatarUrl }
+        ? {
+            ...displayUser,
+            avatarUrl: avatarUrlFromApi || displayUser.avatarUrl,
+          }
         : null;
 
       if (nextUser?.avatarUrl) {
@@ -334,8 +480,6 @@ export function MyProfile() {
         }
 
         setPersistedAvatarUrl(nextUser.avatarUrl);
-
-        // cache bust
         setAvatarV((x) => x + 1);
       }
 
@@ -378,7 +522,6 @@ export function MyProfile() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
-      {/* Header */}
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-5xl font-extrabold tracking-tight md:text-6xl">
@@ -520,6 +663,288 @@ export function MyProfile() {
             </CardContent>
           </Card>
 
+          {/* Security */}
+          <Card className="border-white/10 bg-white/5">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3">
+                <div className="h-6 w-1 rounded-full bg-violet-600" />
+                <h2 className="text-lg font-semibold">Security</h2>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-10 w-10 place-items-center rounded-2xl bg-violet-600/15 ring-1 ring-violet-500/30">
+                    <KeyRound className="h-5 w-5 text-violet-300" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">
+                      {displayUser?.hasPassword ? "Change Password" : "Set Password"}
+                    </div>
+                    <div className="mt-1 text-sm text-white/60">
+                      {displayUser?.hasPassword
+                        ? "Update your current password to keep your account secure."
+                        : "Your account was created with Google. Create a local password if you want to log in without Google too."}
+                    </div>
+                  </div>
+                </div>
+
+                {displayUser?.hasPassword ? (
+                  <>
+                    <form
+                      onSubmit={handleChangePassword}
+                      className="mt-5 grid gap-4"
+                    >
+                      <div className="grid gap-2">
+                        <Label className="text-white/70">Current Password</Label>
+                        <div className="relative">
+                          <Input
+                            type={showCurrentPass ? "text" : "password"}
+                            className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
+                            value={currentPassword}
+                            onChange={(e) => {
+                              setCurrentPassword(e.target.value);
+                              clearSecurityMessages();
+                            }}
+                            placeholder="Enter your current password"
+                            autoComplete="current-password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowCurrentPass((v) => !v)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                          >
+                            {showCurrentPass ? (
+                              <EyeOff className="h-5 w-5" />
+                            ) : (
+                              <Eye className="h-5 w-5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="grid gap-2">
+                          <Label className="text-white/70">New Password</Label>
+                          <div className="relative">
+                            <Input
+                              type={showNewPass ? "text" : "password"}
+                              className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
+                              value={newPassword}
+                              onChange={(e) => {
+                                setNewPassword(e.target.value);
+                                clearSecurityMessages();
+                              }}
+                              placeholder="Create a new password"
+                              autoComplete="new-password"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowNewPass((v) => !v)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                            >
+                              {showNewPass ? (
+                                <EyeOff className="h-5 w-5" />
+                              ) : (
+                                <Eye className="h-5 w-5" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-2">
+                          <Label className="text-white/70">
+                            Confirm New Password
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              type={showConfirmPass ? "text" : "password"}
+                              className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
+                              value={confirmNewPassword}
+                              onChange={(e) => {
+                                setConfirmNewPassword(e.target.value);
+                                clearSecurityMessages();
+                              }}
+                              placeholder="Repeat your new password"
+                              autoComplete="new-password"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowConfirmPass((v) => !v)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                            >
+                              {showConfirmPass ? (
+                                <EyeOff className="h-5 w-5" />
+                              ) : (
+                                <Eye className="h-5 w-5" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {confirmNewPassword && !passwordsMatch ? (
+                        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                          New passwords do not match.
+                        </div>
+                      ) : null}
+
+                      {passwordErr ? (
+                        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                          {passwordErr}
+                        </div>
+                      ) : null}
+
+                      {passwordSuccess ? (
+                        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                          {passwordSuccess}
+                        </div>
+                      ) : null}
+
+                      <div className="flex justify-end">
+                        <Button
+                          type="submit"
+                          className="rounded-2xl bg-violet-600 hover:bg-violet-500"
+                          disabled={passwordSaving || !canChangePassword}
+                        >
+                          {passwordSaving ? "Updating..." : "Update Password"}
+                        </Button>
+                      </div>
+                    </form>
+
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <div className="text-sm font-semibold text-white">
+                        Forgot your current password?
+                      </div>
+                      <div className="mt-1 text-sm text-white/60">
+                        We can send a secure reset link to{" "}
+                        <span className="text-white/80">{displayUser?.email}</span>.
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
+                          onClick={handleForgotPassword}
+                          disabled={forgotSending}
+                        >
+                          {forgotSending ? "Sending..." : "Send Reset Link"}
+                        </Button>
+                      </div>
+
+                      {forgotErr ? (
+                        <div className="mt-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                          {forgotErr}
+                        </div>
+                      ) : null}
+
+                      {forgotSuccess ? (
+                        <div className="mt-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                          {forgotSuccess}
+                        </div>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <form onSubmit={handleSetPassword} className="mt-5 grid gap-4">
+                    <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 px-4 py-3 text-sm text-violet-100">
+                      You currently sign in with Google only. Setting a password
+                      will also let you log in with email and password.
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label className="text-white/70">New Password</Label>
+                        <div className="relative">
+                          <Input
+                            type={showNewPass ? "text" : "password"}
+                            className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
+                            value={newPassword}
+                            onChange={(e) => {
+                              setNewPassword(e.target.value);
+                              clearSecurityMessages();
+                            }}
+                            placeholder="Create a password"
+                            autoComplete="new-password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewPass((v) => !v)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                          >
+                            {showNewPass ? (
+                              <EyeOff className="h-5 w-5" />
+                            ) : (
+                              <Eye className="h-5 w-5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label className="text-white/70">
+                          Confirm New Password
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            type={showConfirmPass ? "text" : "password"}
+                            className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
+                            value={confirmNewPassword}
+                            onChange={(e) => {
+                              setConfirmNewPassword(e.target.value);
+                              clearSecurityMessages();
+                            }}
+                            placeholder="Repeat your password"
+                            autoComplete="new-password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPass((v) => !v)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                          >
+                            {showConfirmPass ? (
+                              <EyeOff className="h-5 w-5" />
+                            ) : (
+                              <Eye className="h-5 w-5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {confirmNewPassword && !passwordsMatch ? (
+                      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                        Passwords do not match.
+                      </div>
+                    ) : null}
+
+                    {passwordErr ? (
+                      <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                        {passwordErr}
+                      </div>
+                    ) : null}
+
+                    {passwordSuccess ? (
+                      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                        {passwordSuccess}
+                      </div>
+                    ) : null}
+
+                    <div className="flex justify-end">
+                      <Button
+                        type="submit"
+                        className="rounded-2xl bg-violet-600 hover:bg-violet-500"
+                        disabled={passwordSaving || !canSetPassword}
+                      >
+                        {passwordSaving ? "Saving..." : "Set Password"}
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Role management */}
           <Card className="border-white/10 bg-white/5">
             <CardContent className="p-6">
@@ -638,7 +1063,6 @@ export function MyProfile() {
         </div>
       </div>
 
-      {/* Avatar modal */}
       <AvatarUploadDialog
         open={avatarOpen}
         onOpenChange={(v) => {
