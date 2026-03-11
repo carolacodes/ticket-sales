@@ -30,7 +30,7 @@ export function UserNavbar({ onLogout }) {
             <div className="grid h-9 w-9 place-items-center rounded-lg bg-violet-600/20 ring-1 ring-violet-500/30">
                 <div className="h-2.5 w-2.5 rounded bg-violet-400" />
             </div>
-            <span className="font-semibold tracking-wide">EVENTSAAS</span>
+            <span className="font-semibold tracking-wide">TICKETIFY</span>
             </Link>
 
             {/* Center nav */}

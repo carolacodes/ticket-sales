@@ -79,15 +79,15 @@ export function Login() {
     <div className="min-h-screen bg-neon flex items-center justify-center px-4 py-10">
       <Card className="w-full max-w-md border-white/10 bg-white/5 backdrop-blur-xl">
         <CardContent className="p-8">
-          {/* Header */}
+          {/* Header 
           <div className="flex items-center justify-center gap-2 text-white/90">
             <div className="grid h-9 w-9 place-items-center rounded-xl bg-violet-600/25 ring-1 ring-violet-500/30">
               <div className="h-2.5 w-2.5 rounded bg-violet-300" />
             </div>
-            <span className="font-semibold tracking-wide">EventSaaS</span>
+            <span className="font-semibold tracking-wide">TICKETIFY</span>
           </div>
-
-          <h1 className="mt-6 text-center text-4xl font-extrabold tracking-wide text-white">
+          */}
+          <h1 className="mt-3 text-center text-4xl font-extrabold tracking-wide text-white">
             LOGIN
           </h1>
 

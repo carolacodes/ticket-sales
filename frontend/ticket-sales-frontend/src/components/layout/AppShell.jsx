@@ -2,7 +2,7 @@ import { SiteNavbar } from "@/components/layout/SiteNavbar";
 import { UserNavbar } from "@/components/layout/UserNavbar";
 import { OrganizerNavbar } from "@/components/layout/OrganizerNavbar";
 import { useAuth } from "@/hooks/useAuth";
-
+import { SiteFooter } from "@/components/layout/SiteFooter";
 export function AppShell({ children }) {
     const { isAuth, loading, user, logout } = useAuth();
 
@@ -19,8 +19,11 @@ export function AppShell({ children }) {
         ) : (
                 <SiteNavbar />
         )}
+            <main className="flex-1">
+                    {children}
+            </main>
 
-        {children}
+            <SiteFooter />
         </div>
     );
 }

@@ -7,7 +7,7 @@ export function SiteFooter() {
             <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
             <div className="flex items-center gap-2 text-white/80">
                 <div className="h-6 w-6 rounded-md bg-violet-600/20 ring-1 ring-violet-500/30" />
-                <span className="font-semibold">EVENTSAAS</span>
+                <span className="font-semibold">TICKETIFY</span>
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-white/60">
@@ -26,7 +26,7 @@ export function SiteFooter() {
             <Separator className="my-8 bg-white/10" />
 
             <p className="text-center text-xs text-white/40">
-            © {new Date().getFullYear()} EventSaaS. All rights reserved.
+            © {new Date().getFullYear()} Ticketify. All rights reserved.
             </p>
         </div>
         </footer>

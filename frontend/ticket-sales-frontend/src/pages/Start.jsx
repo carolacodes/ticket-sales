@@ -1,8 +1,6 @@
-import { SiteNavbar } from "@/components/layout/SiteNavbar";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { StatsStrip } from "@/components/landing/StatsStrip";
 import { TrendingSection } from "@/components/landing/TrendingSection";
-import { SiteFooter } from "@/components/layout/SiteFooter";
 
 const demoEvents = [
     {
@@ -49,7 +47,6 @@ const demoEvents = [
             <StatsStrip />
             <TrendingSection events={demoEvents} />
         </main>
-        <SiteFooter />
         </>
     );
 }

@@ -102,12 +102,6 @@ export function Register() {
   return (
     <div className="min-h-screen bg-neon text-white">
       <div className="p-6">
-        <Link to="/start" className="inline-flex items-center gap-2">
-          <div className="grid h-9 w-9 place-items-center rounded-lg bg-violet-600/20 ring-1 ring-violet-500/30">
-            <div className="h-2.5 w-2.5 rounded bg-violet-400" />
-          </div>
-          <span className="font-semibold tracking-wide">EventSaaS</span>
-        </Link>
       </div>
 
       <div className="flex items-center justify-center px-6 pb-16">

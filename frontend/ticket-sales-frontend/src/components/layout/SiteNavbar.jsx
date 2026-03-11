@@ -66,17 +66,17 @@ function useThemeToggle() {
             <div className="grid h-9 w-9 place-items-center rounded-lg bg-violet-600/20 ring-1 ring-violet-500/30">
                 <div className="h-2.5 w-2.5 rounded bg-violet-400" />
             </div>
-            <span className="font-semibold tracking-wide">EVENTSAAS</span>
+            <span className="font-semibold tracking-wide">TICKETIFY</span>
             </Link>
 
             {/* Desktop nav */}
             <nav className="hidden items-center gap-6 md:flex">
-            <NavItem to="/events">Quiero comprar entradas</NavItem>
+            <NavItem to="/events">I want to buy tickets</NavItem>
             <Link
                 to="/register?role=ORGANIZER"
                 className="rounded-md border border-violet-500/30 bg-violet-600/10 px-3 py-1.5 text-sm text-violet-200 hover:bg-violet-600/20"
             >
-                Quiero vender entradas
+                I want to sell tickets
             </Link>
             <NavItem to="/events">Events</NavItem>
             </nav>
