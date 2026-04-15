@@ -9,6 +9,7 @@ import eventRoutes from "./routes/event.route.js";
 import ticketTypeRoutes from "./routes/ticketType.route.js";
 import orderRoutes from "./routes/order.route.js";
 import ticketRoutes from "./routes/ticket.route.js";
+import paymentRoutes from "./routes/payment.routes.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -58,7 +59,7 @@ app.use("/api", ticketTypeRoutes);
 app.use("/api", orderRoutes);
 app.use("/api", ticketRoutes);
 app.use("/api", oauthRoutes);
-
+app.use("/api", paymentRoutes);
 
 // ✅ Error handler (recomendado)
 app.use((err, req, res, next) => {

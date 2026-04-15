@@ -9,6 +9,7 @@ import Event from "../models/event.model.js";
 import TicketType from "../models/ticketType.model.js";
 import { sendEmail } from "../libs/mailer.js";
 import { orderConfirmedEmail } from "../emails/orderConfirmed.email.js";
+import { confirmPaidOrder } from "../services/orderConfirmation.service.js";
 
 export async function create(req, res, next) {
     try {
@@ -97,7 +98,7 @@ export async function listMine(req, res, next) {
  * - descuenta stock (incrementa soldCount) de manera atómica
  * - marca order como PAID
  * - (más adelante) emite tickets
- */
+
 export async function confirm(req, res, next) {
   const session = await mongoose.startSession();
 
@@ -224,5 +225,33 @@ export async function confirm(req, res, next) {
     next(err);
   } finally {
     session.endSession();
+  }
+}
+ */
+
+/**
+ * 
+ * @param {*} req 
+ * @param {*} res 
+ * @param {*} next 
+ * @returns 
+ */
+export async function confirm(req, res, next) {
+  try {
+    const order = await findOrderById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.userId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const paidOrder = await confirmPaidOrder(order._id);
+
+    return res.status(200).json({ order: paidOrder });
+  } catch (err) {
+    next(err);
   }
 }
