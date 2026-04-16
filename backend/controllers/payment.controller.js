@@ -65,7 +65,10 @@ export async function webhook(req, res, next) {
   try {
     console.log("WEBHOOK BODY:", req.body);
     console.log("WEBHOOK QUERY:", req.query);
-
+    console.log("X-SIGNATURE:", req.headers["x-signature"]);
+    console.log("X-REQUEST-ID:", req.headers["x-request-id"]);
+    console.log("CONTENT-TYPE:", req.headers["content-type"]);
+    
     const type = req.query.type || req.body?.type;
     const paymentId = req.query["data.id"] || req.body?.data?.id;
 

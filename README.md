@@ -265,3 +265,146 @@ Esto es clave para que en tu DB quede registrado:
 
 - quién procesó el pago
 - cuál fue el ID del pago en Mercado Pago
+
+# LOGICA WEBHOOK (MERCADO PAGO)
+
+# 1) ¿Para qué sirve getPaymentById?
+
+Tu webhook hoy recibe una notificación como esta:
+
+```
+{
+  "action": "payment.created",
+  "data": { "id": "153648233399" },
+  "type": "payment"
+}
+```
+
+Eso no es todavía “la verdad completa del pago”.  
+Es más bien un aviso que dice:
+
+_“Che, pasó algo con el pago 153648233399”._
+
+Entonces getPaymentById(paymentId) sirve para hacer esto:
+
+## Paso real
+
+- Mercado Pago te manda el aviso por webhook
+- vos extraés el paymentId
+- con getPaymentById(paymentId) le preguntás a Mercado Pago:
+- cuál es el estado real
+- cuál es el external_reference
+- cuánto pagó
+- quién pagó
+- si está approved, pending, etc.
+
+Por eso en tu webhook hacés:
+
+```
+const payment = await getPaymentById(paymentId);
+```
+
+y después:
+
+```
+if (payment.status !== "approved") {
+  return res.sendStatus(200);
+}
+```
+
+O sea, en simple:
+
+```
+getPaymentById es el paso que convierte:
+
+“me llegó un aviso”
+
+en
+
+“confirmé con Mercado Pago que el pago existe y está aprobado”.
+```
+
+# 2) ¿Para qué sirve la firma del webhook?
+
+La firma sirve para verificar que el webhook que llegó realmente fue enviado por Mercado Pago y no por cualquiera. Mercado Pago indica que las notificaciones Webhooks incluyen una clave/firma secreta para poder validar su autenticidad.
+
+## Sin firma
+
+Cualquiera podría intentar hacer un POST manual a:
+
+```
+POST /api/payments/webhook
+```
+
+y mandarte un body inventado diciendo:
+
+```
+{
+  "type": "payment",
+  "data": { "id": "123456" }
+}
+```
+
+o incluso intentar simular que el pago fue aprobado.
+
+## Con firma
+
+Vos verificás que ese request:
+
+- viene realmente de Mercado Pago
+- no fue alterado
+- corresponde a una notificación auténtica
+
+# 3) ¿El header trae la clave secreta?
+
+##### No exactamente.
+
+- La clave secreta no te la manda Mercado Pago en cada request.
+- La clave secreta la configurás vos y la guardás en tu backend,
+
+##### por ejemplo en .env:
+
+```
+MP_WEBHOOK_SECRET=tu_clave_secreta
+```
+
+Lo que Mercado Pago envía en la notificación son headers, y entre ellos usa headers como x-signature y x-request-id para que vos puedas validar la autenticidad de la notificación con esa clave secreta. La documentación de Mercado Pago menciona específicamente la firma secreta en Webhooks y el uso de headers como x-signature; además, en sus docs de notificaciones también aparece x-request-id como parte del proceso de validación.
+
+#### En simple:
+
+- tu backend tiene la clave secreta
+- Mercado Pago manda la firma en headers
+- vos usás ambas cosas para validar
+
+# 4) Entonces, ¿por qué hay que leer headers?
+
+Porque la firma de seguridad viaja en los headers, no en el body.
+
+#### Por eso después querés inspeccionar cosas como:
+
+```
+req.headers["x-signature"]
+req.headers["x-request-id"]
+```
+
+Esos headers forman parte de la validación de autenticidad de la notificación según la documentación de Mercado Pago.
+
+# 5) ¿Qué sería “construir la validación”?
+
+Significa hacer una lógica tipo:
+
+- leer el header x-signature
+- leer el header x-request-id
+- leer datos del request, como data.id o req.body
+- usar tu MP_WEBHOOK_SECRET
+- comparar lo que llegó con lo que debería dar si la notificación fuera auténtica
+
+#### Si coincide → aceptás el webhook
+
+#### Si no coincide → lo rechazás
+
+# ETAPA DE SEGURIDAD
+
+## Implementar la validación de la firma del webhook
+
+##### Ese ya sería el paso de seguridad, no de funcionalidad básica.
