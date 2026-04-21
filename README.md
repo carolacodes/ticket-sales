@@ -408,3 +408,37 @@ Significa hacer una lógica tipo:
 ## Implementar la validación de la firma del webhook
 
 ##### Ese ya sería el paso de seguridad, no de funcionalidad básica.
+
+### Qué vamos a hacer
+
+- Vamos a agregar un helper que valide la firma del webhook antes de procesarlo.
+
+##### Tu flujo quedará así:
+
+- llega el webhook
+- leemos headers y query
+- validamos la firma
+- solo si es válida seguimos con _getPaymentById(paymentId)_
+- confirmamos la orden
+
+### Para qué sirve cada pieza
+
+## _getPaymentById_
+
+Sirve para consultar el pago real en Mercado Pago. El webhook solo te avisa que pasó algo; la consulta del pago te da el estado oficial como approved, el external_reference, el monto, etc. Eso es exactamente lo que ya estás haciendo bien.
+
+## _firma del webhook_
+
+Sirve para verificar que el request lo mandó realmente Mercado Pago y no alguien intentando pegarle a tu endpoint con datos inventados.
+
+## _headers_
+
+En este caso, los headers traen la firma (x-signature) y el identificador de request (x-request-id). La clave secreta no viaja en el request; esa la guardás vos en .env.
+
+### Archivo 1: crear el helper de validación
+
+- Ruta del archivo
+
+```
+src/libs/mercadoPagoWebhook.js
+```

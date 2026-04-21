@@ -2,6 +2,7 @@ import { findOrderById} from "../services/order.service.js";
 import { findEventById } from "../services/event.service.js";
 import { createCheckoutPreference, getPaymentById } from "../services/payment.service.js";
 import { confirmPaidOrder } from "../services/orderConfirmation.service.js";
+import { verifyMercadoPagoWebhookSignature } from "../libs/mercadoPagoWebhook.js";
 /**
  * 
 Que hace esta funcion controller:
@@ -68,9 +69,20 @@ export async function webhook(req, res, next) {
     console.log("X-SIGNATURE:", req.headers["x-signature"]);
     console.log("X-REQUEST-ID:", req.headers["x-request-id"]);
     console.log("CONTENT-TYPE:", req.headers["content-type"]);
-    
+
+    const signatureCheck = verifyMercadoPagoWebhookSignature(req);
+
+    console.log("WEBHOOK SIGNATURE CHECK:", signatureCheck);
+
+    if (!signatureCheck.ok) {
+      return res.status(401).json({
+        message: "Invalid webhook signature",
+        reason: signatureCheck.reason,
+      });
+    }
+
     const type = req.query.type || req.body?.type;
-    const paymentId = req.query["data.id"] || req.body?.data?.id;
+    const paymentId = req.query["data.id"] || req.body?.data?.id || req.query.id;
 
     if (type !== "payment" || !paymentId) {
       return res.sendStatus(200);
