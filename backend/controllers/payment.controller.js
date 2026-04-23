@@ -74,11 +74,16 @@ export async function webhook(req, res, next) {
 
     console.log("WEBHOOK SIGNATURE CHECK:", signatureCheck);
 
+    // CONTROLAMOS POR VARIABLE DE ENTORNO PARA NO RECHAZAR LOS WEBHOOKS EN DESARROLLO, YA QUE NO TENEMOS HTTPS NI PUEDO CONFIGURAR EL WEBHOOK DE MP PARA QUE APUNTE A LA IP LOCAL
     if (!signatureCheck.ok) {
-      return res.status(401).json({
-        message: "Invalid webhook signature",
-        reason: signatureCheck.reason,
-      });
+        console.warn("INVALID WEBHOOK SIGNATURE:", signatureCheck);
+
+        if (process.env.NODE_ENV === "production") {
+          return res.status(401).json({
+            message: "Invalid webhook signature",
+            reason: signatureCheck.reason,
+          });
+        }
     }
 
     const type = req.query.type || req.body?.type;
