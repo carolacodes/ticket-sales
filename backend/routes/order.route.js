@@ -24,6 +24,14 @@ router.get(
     orderController.listMine
 );
 
+router.get(
+    "/orders/:id",
+    requireAuth,
+    requireRole("BUYER"),
+    requireOrderOwner,
+    orderController.getOne
+);
+
 // Confirmación MVP (BUYER owner)
 router.post(
     "/orders/:id/confirm",

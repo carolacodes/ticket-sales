@@ -10,77 +10,154 @@ import TicketType from "../models/ticketType.model.js";
 import { sendEmail } from "../libs/mailer.js";
 import { orderConfirmedEmail } from "../emails/orderConfirmed.email.js";
 import { confirmPaidOrder } from "../services/orderConfirmation.service.js";
+import Ticket from "../models/ticket.model.js";
 
-export async function create(req, res, next) {
-    try {
-        const userId = req.user.id;
-        const { eventId, items } = req.body;
+export async function getOne(req, res, next) {
+  try {
+    const order = await findOrderById(req.params.id);
 
-        const event = await findEventById(eventId);
-        if (!event) return res.status(404).json({ message: "Event not found" });
-        if (event.status !== "PUBLISHED") return res.status(403).json({ message: "Event not available" });
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
 
-        // Traer todos los ticket types pedidos
-        const ids = items.map((i) => i.ticketTypeId);
-        const ticketTypes = await TicketType.find({ _id: { $in: ids }, eventId });
+    if (order.userId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
 
-        if (ticketTypes.length !== ids.length) {
-        return res.status(400).json({ message: "Some ticket types are invalid for this event" });
-        }
+    const [event, tickets, ticketTypes] = await Promise.all([
+      Event.findById(order.eventId).select("title startAt venue city bannerUrl"),
+      Ticket.find({ orderId: order._id }).sort({ createdAt: -1 }),
+      TicketType.find({
+        _id: { $in: order.items.map((item) => item.ticketTypeId) },
+      }).select("name price currency"),
+    ]);
 
-        // Map para lookup rápido
-        const ttMap = new Map(ticketTypes.map((t) => [t._id.toString(), t]));
+    const ticketTypeMap = new Map(
+      ticketTypes.map((tt) => [tt._id.toString(), tt])
+    );
 
-        // Validar stock + calcular total
-        let total = 0;
-        let currency = ticketTypes[0].currency || "USD";
+    const normalizedItems = order.items.map((item) => {
+      const tt = ticketTypeMap.get(item.ticketTypeId.toString());
 
-        const orderItems = items.map((i) => {
-        const tt = ttMap.get(i.ticketTypeId);
-        const available = (tt.capacity ?? 0) - (tt.soldCount ?? 0);
-
-        // opcional: validar ventana de venta
-        if (tt.saleStartAt && new Date() < new Date(tt.saleStartAt)) {
-            throw Object.assign(new Error("Sale has not started"), { status: 400 });
-        }
-        if (tt.saleEndAt && new Date() > new Date(tt.saleEndAt)) {
-            throw Object.assign(new Error("Sale has ended"), { status: 400 });
-        }
-
-        if (i.qty > available) {
-            throw Object.assign(new Error(`Not enough stock for ${tt.name}`), { status: 409 });
-        }
-
-        const lineTotal = tt.price * i.qty;
-        total += lineTotal;
-
-        return {
-            ticketTypeId: tt._id,
-            name: tt.name,
-            unitPrice: tt.price,
-            currency: tt.currency || currency,
-            qty: i.qty,
-            lineTotal,
-        };
+      return {
+        ticketTypeId: item.ticketTypeId,
+        name: item.name || tt?.name || "Ticket",
+        qty: item.qty,
+        unitPrice: item.unitPrice,
+        currency: item.currency || tt?.currency || order.currency,
+        lineTotal: item.lineTotal || item.qty * item.unitPrice,
+      };
     });
 
-    // Expiración opcional para PENDING (ej: 15 min)
+    return res.status(200).json({
+      order: {
+        _id: order._id,
+        userId: order.userId,
+        eventId: order.eventId,
+        status: order.status,
+        paymentProvider: order.paymentProvider,
+        paymentRef: order.paymentRef,
+        total: order.total,
+        currency: order.currency,
+        paidAt: order.paidAt,
+        expiresAt: order.expiresAt,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        items: normalizedItems,
+        event,
+        tickets,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function create(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { eventId, items } = req.body;
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    if (event.status !== "PUBLISHED") {
+      return res.status(403).json({ message: "Event not available" });
+    }
+
+    // ✅ Nuevo: bloquear compra si el evento ya empezó o ya pasó
+    if (event.startAt && new Date() >= new Date(event.startAt)) {
+      return res
+        .status(400)
+        .json({ message: "Event has already started or ended" });
+    }
+
+    // Traer todos los ticket types pedidos
+    const ids = items.map((i) => i.ticketTypeId);
+    const ticketTypes = await TicketType.find({ _id: { $in: ids }, eventId });
+
+    if (ticketTypes.length !== ids.length) {
+      return res
+        .status(400)
+        .json({ message: "Some ticket types are invalid for this event" });
+    }
+
+    // Map para lookup rápido
+    const ttMap = new Map(ticketTypes.map((t) => [t._id.toString(), t]));
+
+    // Validar stock + calcular total
+    let total = 0;
+    let currency = ticketTypes[0].currency || "USD";
+
+    const orderItems = items.map((i) => {
+      const tt = ttMap.get(i.ticketTypeId);
+      const available = (tt.capacity ?? 0) - (tt.soldCount ?? 0);
+
+      if (tt.saleStartAt && new Date() < new Date(tt.saleStartAt)) {
+        throw Object.assign(new Error("Sale has not started"), { status: 400 });
+      }
+
+      if (tt.saleEndAt && new Date() > new Date(tt.saleEndAt)) {
+        throw Object.assign(new Error("Sale has ended"), { status: 400 });
+      }
+
+      if (i.qty > available) {
+        throw Object.assign(new Error(`Not enough stock for ${tt.name}`), {
+          status: 409,
+        });
+      }
+
+      const lineTotal = tt.price * i.qty;
+      total += lineTotal;
+
+      return {
+        ticketTypeId: tt._id,
+        name: tt.name,
+        unitPrice: tt.price,
+        currency: tt.currency || currency,
+        qty: i.qty,
+        lineTotal,
+      };
+    });
+
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     const order = await createOrder({
-        userId,
-        eventId,
-        status: "PENDING",
-        items: orderItems,
-        total,
-        currency,
-        expiresAt,
+      userId,
+      eventId,
+      status: "PENDING",
+      items: orderItems,
+      total,
+      currency,
+      expiresAt,
     });
 
     return res.status(201).json({ order });
-    } catch (err) {
-        next(err);
-    }
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function listMine(req, res, next) {

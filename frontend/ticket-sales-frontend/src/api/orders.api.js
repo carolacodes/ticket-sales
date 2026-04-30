@@ -11,3 +11,11 @@ export function confirmOrderRequest(orderId, data = {}) {
 export function listMyOrdersRequest() {
     return api.get("/orders/me");
 }
+
+export function getMyOrdersRequest() {
+    return api.get("/orders/me");
+}
+
+export function getOrderByIdRequest(orderId) {
+    return api.get(`/orders/${orderId}`);
+}

@@ -45,7 +45,7 @@ function formatTagLabel(tag = "") {
     .map((word) => {
       const clean = word.trim();
       const lower = clean.toLowerCase();
-      return acronyms[lower] || (lower.charAt(0).toUpperCase() + lower.slice(1));
+      return acronyms[lower] || lower.charAt(0).toUpperCase() + lower.slice(1);
     })
     .join(" ");
 }
@@ -111,6 +111,11 @@ function getThisMonthRange() {
   };
 }
 
+function isEventEnded(startAt) {
+  if (!startAt) return false;
+  return new Date() >= new Date(startAt);
+}
+
 export function Events() {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
@@ -131,6 +136,12 @@ export function Events() {
   });
 
   const [loading, setLoading] = useState(true);
+
+  const safeTotalPages = Math.max(1, Number(pagination.totalPages || 1));
+  const safeCurrentPage = Math.min(
+    safeTotalPages,
+    Math.max(1, Number(pagination.page || page || 1))
+  );
 
   const params = useMemo(() => {
     const p = {
@@ -154,20 +165,28 @@ export function Events() {
     async function run() {
       try {
         setLoading(true);
+
         const res = await listPublishedEvents(params);
 
         if (!alive) return;
 
-        setEvents(res?.data?.events ?? []);
+        const nextEvents = res?.data?.events ?? [];
+        const nextPagination = res?.data?.pagination ?? {
+          page,
+          limit: 12,
+          total: nextEvents.length,
+          totalPages: 1,
+        };
+
+        setEvents(Array.isArray(nextEvents) ? nextEvents : []);
         setAvailableTags(res?.data?.availableTags ?? []);
-        setPagination(
-          res?.data?.pagination ?? {
-            page: 1,
-            limit: 12,
-            total: 0,
-            totalPages: 1,
-          }
-        );
+
+        setPagination({
+          page: Number(nextPagination.page ?? page),
+          limit: Number(nextPagination.limit ?? 12),
+          total: Number(nextPagination.total ?? nextEvents.length ?? 0),
+          totalPages: Math.max(1, Number(nextPagination.totalPages ?? 1)),
+        });
       } finally {
         if (!alive) return;
         setLoading(false);
@@ -175,10 +194,11 @@ export function Events() {
     }
 
     run();
+
     return () => {
       alive = false;
     };
-  }, [params]);
+  }, [params, page]);
 
   function toggleTag(label) {
     setPage(1);
@@ -228,6 +248,14 @@ export function Events() {
     setDateTo("");
     setPrice([0, 500]);
     setPage(1);
+  }
+
+  function goPrevPage() {
+    setPage((p) => Math.max(1, p - 1));
+  }
+
+  function goNextPage() {
+    setPage((p) => Math.min(safeTotalPages, p + 1));
   }
 
   return (
@@ -345,6 +373,7 @@ export function Events() {
                 }}
                 className="w-full accent-violet-500"
               />
+
               <div className="flex items-center justify-between text-xs text-white/60">
                 <span>${price[0]}</span>
                 <span>${price[1]}</span>
@@ -379,6 +408,7 @@ export function Events() {
                 className="border-white/10 bg-white/5"
               />
             </div>
+
             <Button
               className="bg-violet-600 hover:bg-violet-500"
               onClick={() => setPage(1)}
@@ -439,8 +469,16 @@ export function Events() {
           </button>
         </div>
 
-        <div className="text-sm text-white/50">
-          {loading ? "Loading events..." : `${pagination.total} event(s) found`}
+        <div className="flex items-center justify-between gap-3 text-sm text-white/50">
+          <span>
+            {loading ? "Loading events..." : `${pagination.total} event(s) found`}
+          </span>
+
+          {!loading && pagination.total > 0 ? (
+            <span>
+              Page {safeCurrentPage} of {safeTotalPages}
+            </span>
+          ) : null}
         </div>
 
         <Separator className="bg-white/10" />
@@ -466,81 +504,121 @@ export function Events() {
           </Card>
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {events.map((e) => (
-              <Card
-                key={e._id}
-                className="overflow-hidden border-white/10 bg-white/5"
-              >
-                <div className="relative h-40 w-full">
-                  <img
-                    src={toBanner(e.bannerUrl)}
-                    alt={e.title}
-                    className="h-full w-full object-cover"
-                  />
-                  <div className="absolute right-3 top-3">
-                    {Number(e.minPrice ?? 0) === 0 ? (
-                      <Badge className="border-white/10 bg-black/60 text-white">
-                        FREE
-                      </Badge>
-                    ) : null}
-                  </div>
-                </div>
+            {events.map((e) => {
+              const eventId = e._id || e.id;
+              const ended = isEventEnded(e.startAt);
+              const minPrice = Number(e.minPrice ?? 0);
 
-                <CardContent className="p-5">
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {(e.tags ?? []).slice(0, 2).map((t) => (
-                      <Badge
-                        key={t}
-                        className="border-white/10 bg-violet-600/20 text-violet-100"
+              return (
+                <Card
+                  key={eventId}
+                  className={[
+                    "overflow-hidden border-white/10 bg-white/5",
+                    ended ? "opacity-80" : "",
+                  ].join(" ")}
+                >
+                  <div className="relative h-40 w-full">
+                    <img
+                      src={toBanner(e.bannerUrl)}
+                      alt={e.title}
+                      className="h-full w-full object-cover"
+                    />
+
+                    <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+                      {ended ? (
+                        <Badge className="border-white/5 bg-red-800 text-red-100">
+                          EVENT ENDED
+                        </Badge>
+                      ) : (
+                        <Badge className="border-white/5 bg-emerald-500 text-emerald-100">
+                          ON SALE
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="absolute right-3 top-3">
+                      {minPrice === 0 ? (
+                        <Badge className="border-white/10 bg-black/60 text-white">
+                          FREE
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <CardContent className="p-5">
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {(e.tags ?? []).slice(0, 2).map((t) => (
+                        <Badge
+                          key={t}
+                          className="border-white/10 bg-violet-600/20 text-violet-100"
+                        >
+                          {formatTagLabel(t)}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    <div className="text-lg font-semibold">{e.title}</div>
+
+                    <div className="mt-3 grid gap-1 text-xs text-white/60">
+                      <div>📅 {formatDate(e.startAt)}</div>
+                      <div>
+                        📍 {e.city} • {e.venue}
+                      </div>
+                      <div>
+                        💲{" "}
+                        {ended
+                          ? "Sales closed"
+                          : `From $${Number(e.minPrice ?? 0)}`}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex justify-end">
+                      <Button
+                        asChild
+                        className={
+                          ended
+                            ? "bg-white/10 text-white/70 hover:bg-white/10"
+                            : "bg-violet-600 hover:bg-violet-500"
+                        }
                       >
-                        {formatTagLabel(t)}
-                      </Badge>
-                    ))}
-                  </div>
-
-                  <div className="text-lg font-semibold">{e.title}</div>
-
-                  <div className="mt-3 grid gap-1 text-xs text-white/60">
-                    <div>📅 {formatDate(e.startAt)}</div>
-                    <div>📍 {e.city} • {e.venue}</div>
-                    <div>💲 From ${Number(e.minPrice ?? 0)}</div>
-                  </div>
-
-                  <div className="mt-5 flex justify-end">
-                    <Button asChild className="bg-violet-600 hover:bg-violet-500">
-                      <Link to={`/events/${e._id}`}>View</Link>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                        <Link to={`/events/${eventId}`}>
+                          {ended ? "View details" : "View"}
+                        </Link>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
 
         {/* Pagination */}
-        <div className="flex items-center justify-center gap-2 pt-6">
-          <Button
-            variant="outline"
-            className="border-white/10 bg-white/5 hover:bg-white/10"
-            disabled={pagination.page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            ‹
-          </Button>
+        {!loading && safeTotalPages > 1 ? (
+          <div className="flex items-center justify-center gap-3 pt-6">
+            <Button
+              variant="outline"
+              className="border-white/10 bg-white/5 hover:bg-white/10"
+              disabled={safeCurrentPage <= 1}
+              onClick={goPrevPage}
+            >
+              ‹ Previous
+            </Button>
 
-          <span className="grid h-9 min-w-9 place-items-center rounded-md bg-violet-600 px-3 text-sm">
-            {pagination.page}
-          </span>
+            <span className="grid h-9 min-w-24 place-items-center rounded-md bg-violet-600 px-3 text-sm">
+              {safeCurrentPage} / {safeTotalPages}
+            </span>
 
-          <Button
-            variant="outline"
-            className="border-white/10 bg-white/5 hover:bg-white/10"
-            disabled={pagination.page >= pagination.totalPages}
-            onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
-          >
-            ›
-          </Button>
-        </div>
+            <Button
+              variant="outline"
+              className="border-white/10 bg-white/5 hover:bg-white/10"
+              disabled={safeCurrentPage >= safeTotalPages}
+              onClick={goNextPage}
+            >
+              Next ›
+            </Button>
+          </div>
+        ) : null}
       </main>
     </div>
   );

@@ -17,6 +17,11 @@ import { MyEvents } from "@/pages/MyEvents.jsx";
 import { TicketCheckIn } from "@/pages/TicketCheckIn";
 import { ForgotPassword } from "@/pages/ForgotPassword";
 import { ResetPassword } from "@/pages/ResetPassword";
+import { PaymentSuccess } from "@/pages/payment/PaymentSuccess.jsx";
+import { PaymentPending } from "@/pages/payment/PaymentPending.jsx";
+import { PaymentFailure } from "@/pages/payment/PaymentFailure.jsx";
+import { MyPurchases } from "@/pages/MyPurchases.jsx";
+import { PurchaseDetail } from "@/pages/PurchaseDetail.jsx";
 // ✅ NUEVO: OAuth callback page
 import OAuthCallback from "@/auth/oauth-callback.jsx";
 
@@ -47,6 +52,50 @@ export function AppRouter() {
         element={
           <BuyerRoute>
             <MyTickets />
+          </BuyerRoute>
+        }
+      />
+
+      <Route
+        path="/payment/success"
+        element={
+          <BuyerRoute>
+            <PaymentSuccess />
+          </BuyerRoute>
+        }
+      />
+
+      <Route
+        path="/payment/pending"
+        element={
+          <BuyerRoute>
+            <PaymentPending />
+          </BuyerRoute>
+        }
+      />
+
+      <Route
+        path="/payment/failure"
+        element={
+          <BuyerRoute>
+            <PaymentFailure />
+          </BuyerRoute>
+        }
+      />
+      <Route
+        path="/my-purchases"
+        element={
+          <BuyerRoute>
+            <MyPurchases />
+          </BuyerRoute>
+        }
+      />
+
+      <Route
+        path="/my-purchases/:id"
+        element={
+          <BuyerRoute>
+            <PurchaseDetail />
           </BuyerRoute>
         }
       />

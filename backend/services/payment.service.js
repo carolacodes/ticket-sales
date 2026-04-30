@@ -15,7 +15,12 @@ export async function createCheckoutPreference({ order, event }) {
         ],
         external_reference: order._id.toString(),
         notification_url: `${process.env.APP_URL}/api/payments/webhook`,
-        // auto_return: "approved",
+        back_urls: {
+            success: `${process.env.CLIENT_URL}/payment/success`,
+            failure: `${process.env.CLIENT_URL}/payment/failure`,
+            pending: `${process.env.CLIENT_URL}/payment/pending`,
+        },
+        auto_return: "approved",
     };
 
     console.log("BODY MP:", JSON.stringify(body, null, 2));
