@@ -13,12 +13,12 @@ import {
   CheckCircle2,
   XCircle,
   ScanLine,
-  Ticket,
   Clock3,
   Search,
   User,
   Mail,
   ArrowLeft,
+  RefreshCcw,
 } from "lucide-react";
 
 function formatDateTime(iso) {
@@ -79,12 +79,48 @@ function playBeep(type = "success") {
   }
 }
 
+function vibrate(type = "success") {
+  if (!navigator.vibrate) return;
+
+  if (type === "success") {
+    navigator.vibrate([80]);
+  } else {
+    navigator.vibrate([120, 60, 120]);
+  }
+}
+
 function statusBadge(status) {
   const s = String(status || "").toUpperCase();
-  if (s === "VALID") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
-  if (s === "USED") return "border-yellow-500/20 bg-yellow-500/10 text-yellow-200";
-  if (s === "VOID") return "border-red-500/20 bg-red-500/10 text-red-200";
+
+  if (s === "VALID") {
+    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
+  }
+
+  if (s === "USED") {
+    return "border-yellow-500/20 bg-yellow-500/10 text-yellow-200";
+  }
+
+  if (s === "VOID") {
+    return "border-red-500/20 bg-red-500/10 text-red-200";
+  }
+
   return "border-white/10 bg-white/10 text-white";
+}
+
+function getBackCamera(devices = []) {
+  const backCamera = devices.find((device) => {
+    const label = String(device.label || "").toLowerCase();
+
+    return (
+      label.includes("back") ||
+      label.includes("rear") ||
+      label.includes("environment") ||
+      label.includes("trasera") ||
+      label.includes("posterior")
+    );
+  });
+
+  return backCamera || devices[devices.length - 1] || devices[0];
 }
 
 export function TicketCheckIn() {
@@ -106,6 +142,9 @@ export function TicketCheckIn() {
 
   const [result, setResult] = useState(null);
 
+  const [cameras, setCameras] = useState([]);
+  const [cameraIndex, setCameraIndex] = useState(0);
+
   const scannerRef = useRef(null);
   const lockRef = useRef(false);
   const lastScanRef = useRef({ code: "", at: 0 });
@@ -116,11 +155,14 @@ export function TicketCheckIn() {
     try {
       setLoading(true);
       setLoadErr("");
+
       const res = await getEventTicketsForCheckIn(eventId);
       setEventData(res?.data || null);
     } catch (err) {
       setLoadErr(
-        err?.response?.data?.message || err?.message || "Could not load event tickets."
+        err?.response?.data?.message ||
+          err?.message ||
+          "Could not load event tickets."
       );
     } finally {
       setLoading(false);
@@ -149,6 +191,8 @@ export function TicketCheckIn() {
       });
 
       playBeep("success");
+      vibrate("success");
+
       setCode(cleanCode);
 
       await loadTickets();
@@ -164,6 +208,8 @@ export function TicketCheckIn() {
       });
 
       playBeep("error");
+      vibrate("error");
+
       setCode(cleanCode);
     } finally {
       setBusy(false);
@@ -173,59 +219,13 @@ export function TicketCheckIn() {
   async function handleManualCheck() {
     const cleanCode = code.trim();
     if (!cleanCode) return;
+
     await handleCheckIn(cleanCode);
-  }
-
-  async function startScanner() {
-    if (scanning) return;
-
-    setResult(null);
-    setScanning(true);
-
-    const scanner = new Html5Qrcode("ticket-checkin-reader");
-    scannerRef.current = scanner;
-
-    try {
-      await scanner.start(
-        { facingMode: "environment" },
-        {
-          fps: 10,
-          qrbox: { width: 240, height: 240 },
-          aspectRatio: 1,
-        },
-        async (decodedText) => {
-          const now = Date.now();
-          const sameAsLast =
-            lastScanRef.current.code === decodedText &&
-            now - lastScanRef.current.at < 2500;
-
-          if (lockRef.current || sameAsLast) return;
-
-          lockRef.current = true;
-          lastScanRef.current = { code: decodedText, at: now };
-
-          setCode(decodedText);
-          await handleCheckIn(decodedText);
-
-          setTimeout(() => {
-            lockRef.current = false;
-          }, 1200);
-        },
-        () => {}
-      );
-    } catch {
-      setScanning(false);
-      setResult({
-        type: "error",
-        title: "Camera Error",
-        message: "No se pudo iniciar la cámara o no diste permisos.",
-      });
-    }
   }
 
   async function stopScanner() {
     try {
-      if (scannerRef.current && scanning) {
+      if (scannerRef.current) {
         await scannerRef.current.stop();
         await scannerRef.current.clear();
       }
@@ -234,7 +234,104 @@ export function TicketCheckIn() {
     } finally {
       scannerRef.current = null;
       setScanning(false);
+      lockRef.current = false;
     }
+  }
+
+  async function initScanner() {
+    try {
+      const scanner = new Html5Qrcode("ticket-checkin-reader");
+      scannerRef.current = scanner;
+
+      let devices = cameras;
+
+      if (!devices.length) {
+        devices = await Html5Qrcode.getCameras();
+        setCameras(devices);
+
+        const backCamera = getBackCamera(devices);
+        const backIndex = devices.findIndex((d) => d.id === backCamera?.id);
+        setCameraIndex(backIndex >= 0 ? backIndex : 0);
+      }
+
+      if (!devices || devices.length === 0) {
+        throw new Error("No camera found");
+      }
+
+      const selectedCamera =
+        devices[cameraIndex] || getBackCamera(devices) || devices[0];
+
+      await scanner.start(
+        selectedCamera.id,
+        {
+          fps: 10,
+          qrbox: { width: 240, height: 240 },
+          aspectRatio: 1,
+        },
+        async (decodedText) => {
+          const scannedCode = String(decodedText || "").trim();
+          if (!scannedCode) return;
+
+          const now = Date.now();
+
+          const sameAsLast =
+            lastScanRef.current.code === scannedCode &&
+            now - lastScanRef.current.at < 3000;
+
+          if (lockRef.current || sameAsLast || busy) return;
+
+          lockRef.current = true;
+          lastScanRef.current = { code: scannedCode, at: now };
+
+          setCode(scannedCode);
+          await handleCheckIn(scannedCode);
+
+          setTimeout(() => {
+            lockRef.current = false;
+          }, 1500);
+        },
+        () => {}
+      );
+    } catch (err) {
+      console.error("SCANNER ERROR:", err);
+
+      setScanning(false);
+      setResult({
+        type: "error",
+        title: "Camera Error",
+        message:
+          "No se pudo acceder a la cámara. Revisá permisos, HTTPS o el dispositivo.",
+      });
+    }
+  }
+
+  async function startScanner() {
+    if (scanning) return;
+
+    setResult(null);
+    setScanning(true);
+
+    setTimeout(() => {
+      initScanner();
+    }, 100);
+  }
+
+  async function switchCamera() {
+    if (!cameras.length) return;
+
+    const nextIndex = (cameraIndex + 1) % cameras.length;
+
+    await stopScanner();
+
+    setCameraIndex(nextIndex);
+
+    setTimeout(() => {
+      setScanning(true);
+
+      setTimeout(() => {
+        initScanner();
+      }, 100);
+    }, 100);
   }
 
   useEffect(() => {
@@ -249,6 +346,9 @@ export function TicketCheckIn() {
   const tickets = eventData?.tickets || [];
   const stats = eventData?.stats || { total: 0, valid: 0, used: 0 };
   const event = eventData?.event || null;
+
+  const selectedCameraLabel =
+    cameras[cameraIndex]?.label || (scanning ? "Camera active" : "No camera selected");
 
   const filteredTickets = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -315,27 +415,41 @@ export function TicketCheckIn() {
               {event?.title || "CHECK-IN"}
             </h1>
             <p className="mt-2 text-sm text-white/60">
-              {event?.venue || "—"}{event?.city ? `, ${event.city}` : ""} • {formatDateTime(event?.startAt)}
+              {event?.venue || "—"}
+              {event?.city ? `, ${event.city}` : ""} •{" "}
+              {formatDateTime(event?.startAt)}
             </p>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <Card className="border-white/10 bg-white/5">
               <CardContent className="p-4">
-                <div className="text-xs uppercase tracking-widest text-white/40">Total</div>
+                <div className="text-xs uppercase tracking-widest text-white/40">
+                  Total
+                </div>
                 <div className="mt-1 text-2xl font-bold">{stats.total}</div>
               </CardContent>
             </Card>
+
             <Card className="border-white/10 bg-white/5">
               <CardContent className="p-4">
-                <div className="text-xs uppercase tracking-widest text-white/40">Valid</div>
-                <div className="mt-1 text-2xl font-bold text-emerald-300">{stats.valid}</div>
+                <div className="text-xs uppercase tracking-widest text-white/40">
+                  Valid
+                </div>
+                <div className="mt-1 text-2xl font-bold text-emerald-300">
+                  {stats.valid}
+                </div>
               </CardContent>
             </Card>
+
             <Card className="border-white/10 bg-white/5">
               <CardContent className="p-4">
-                <div className="text-xs uppercase tracking-widest text-white/40">Used</div>
-                <div className="mt-1 text-2xl font-bold text-yellow-300">{stats.used}</div>
+                <div className="text-xs uppercase tracking-widest text-white/40">
+                  Used
+                </div>
+                <div className="mt-1 text-2xl font-bold text-yellow-300">
+                  {stats.used}
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -343,10 +457,9 @@ export function TicketCheckIn() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.15fr_.95fr]">
-        {/* LEFT */}
         <Card className="overflow-hidden rounded-3xl border-white/10 bg-white/5">
           <CardContent className="p-6">
-            <div className="mb-5 flex items-center justify-between gap-3">
+            <div className="mb-5 flex flex-col justify-between gap-3 md:flex-row md:items-center">
               <div>
                 <div className="text-xs uppercase tracking-widest text-violet-300">
                   Live Scanner
@@ -354,29 +467,60 @@ export function TicketCheckIn() {
                 <div className="mt-1 text-lg font-semibold">
                   Scan ticket QR with camera
                 </div>
+                <div className="mt-1 text-xs text-white/45">
+                  {selectedCameraLabel}
+                </div>
               </div>
 
-              {!scanning ? (
-                <Button
-                  onClick={startScanner}
-                  className="rounded-2xl bg-violet-600 hover:bg-violet-500"
-                >
-                  <Camera className="mr-2 h-4 w-4" />
-                  Start camera
-                </Button>
-              ) : (
-                <Button
-                  onClick={stopScanner}
-                  variant="destructive"
-                  className="rounded-2xl"
-                >
-                  <CameraOff className="mr-2 h-4 w-4" />
-                  Stop camera
-                </Button>
-              )}
+              <div className="flex flex-wrap gap-2">
+                {scanning && cameras.length > 1 ? (
+                  <Button
+                    onClick={switchCamera}
+                    variant="outline"
+                    className="rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
+                  >
+                    <RefreshCcw className="mr-2 h-4 w-4" />
+                    Switch camera
+                  </Button>
+                ) : null}
+
+                {!scanning ? (
+                  <Button
+                    onClick={startScanner}
+                    className="rounded-2xl bg-violet-600 hover:bg-violet-500"
+                  >
+                    <Camera className="mr-2 h-4 w-4" />
+                    Start camera
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={stopScanner}
+                    variant="destructive"
+                    className="rounded-2xl"
+                  >
+                    <CameraOff className="mr-2 h-4 w-4" />
+                    Stop camera
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/40">
+              {result ? (
+                <div
+                  className={[
+                    "pointer-events-none absolute left-4 right-4 top-4 z-20 rounded-2xl border p-4 text-center text-sm font-semibold shadow-2xl",
+                    result.type === "success"
+                      ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-100"
+                      : "border-red-500/40 bg-red-500/20 text-red-100",
+                  ].join(" ")}
+                >
+                  {result.type === "success"
+                    ? "✅ Access granted"
+                    : "❌ Check-in failed"}
+                </div>
+              ) : null}
+
               {!scanning ? (
                 <div className="grid min-h-[320px] place-items-center p-8">
                   <div className="text-center">
@@ -395,10 +539,11 @@ export function TicketCheckIn() {
               ) : (
                 <div className="relative">
                   <div id="ticket-checkin-reader" className="min-h-[320px] w-full" />
+
                   <div className="pointer-events-none absolute inset-0">
                     <div className="absolute inset-0 bg-black/10" />
                     <div className="absolute left-1/2 top-1/2 h-[240px] w-[240px] -translate-x-1/2 -translate-y-1/2 rounded-3xl border-2 border-violet-400/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.20)]" />
-                    <div className="absolute left-1/2 top-1/2 h-[2px] w-[220px] -translate-x-1/2 -translate-y-1/2 bg-violet-300 shadow-[0_0_18px_rgba(167,139,250,0.9)] animate-pulse" />
+                    <div className="absolute left-1/2 top-1/2 h-[2px] w-[220px] -translate-x-1/2 -translate-y-1/2 animate-pulse bg-violet-300 shadow-[0_0_18px_rgba(167,139,250,0.9)]" />
                   </div>
                 </div>
               )}
@@ -416,6 +561,7 @@ export function TicketCheckIn() {
                   placeholder="Paste or type ticket code"
                   className="h-12 rounded-2xl border-white/10 bg-white/5"
                 />
+
                 <Button
                   onClick={handleManualCheck}
                   disabled={!code.trim() || busy}
@@ -453,7 +599,10 @@ export function TicketCheckIn() {
 
                   <div>
                     <div className="text-lg font-semibold">{result.title}</div>
-                    <p className="mt-1 text-sm text-white/75">{result.message}</p>
+                    <p className="mt-1 text-sm text-white/75">
+                      {result.message}
+                    </p>
+
                     {result.code ? (
                       <div className="mt-2 font-mono text-xs text-white/45">
                         {result.code}
@@ -472,7 +621,6 @@ export function TicketCheckIn() {
           </CardContent>
         </Card>
 
-        {/* RIGHT */}
         <div className="space-y-6">
           <Card className="rounded-3xl border-white/10 bg-white/5">
             <CardContent className="p-6">
@@ -498,6 +646,7 @@ export function TicketCheckIn() {
                   >
                     Valid
                   </button>
+
                   <button
                     onClick={() => setTab("USED")}
                     className={[
@@ -522,7 +671,7 @@ export function TicketCheckIn() {
                 />
               </div>
 
-              <div className="mt-5 space-y-3 max-h-[620px] overflow-y-auto pr-1">
+              <div className="mt-5 max-h-[620px] space-y-3 overflow-y-auto pr-1">
                 {loading ? (
                   <div className="text-sm text-white/50">Loading tickets...</div>
                 ) : filteredTickets.length === 0 ? (
@@ -543,10 +692,12 @@ export function TicketCheckIn() {
                             <div className="font-mono text-sm text-white/90">
                               {ticket.code}
                             </div>
+
                             <div className="mt-2 flex flex-wrap gap-2">
                               <Badge className={statusBadge(ticket.status)}>
                                 {ticket.status}
                               </Badge>
+
                               {ticket.ticketType?.name ? (
                                 <Badge className="border-sky-500/20 bg-sky-500/10 text-sky-200">
                                   {ticket.ticketType.name}
@@ -565,7 +716,9 @@ export function TicketCheckIn() {
                             </Button>
                           ) : (
                             <div className="text-xs text-white/45">
-                              {ticket.checkedInAt ? formatTime(ticket.checkedInAt) : "Already used"}
+                              {ticket.checkedInAt
+                                ? formatTime(ticket.checkedInAt)
+                                : "Already used"}
                             </div>
                           )}
                         </div>
@@ -573,16 +726,23 @@ export function TicketCheckIn() {
                         <div className="mt-4 grid gap-2 text-sm text-white/70">
                           <div className="flex items-center gap-2">
                             <User className="h-4 w-4 text-violet-300" />
-                            <span>{ticket.buyer?.username || "Unknown user"}</span>
+                            <span>
+                              {ticket.buyer?.username || "Unknown user"}
+                            </span>
                           </div>
+
                           <div className="flex items-center gap-2">
                             <Mail className="h-4 w-4 text-violet-300" />
                             <span>{ticket.buyer?.email || "No email"}</span>
                           </div>
+
                           {ticket.checkedInAt ? (
                             <div className="flex items-center gap-2">
                               <Clock3 className="h-4 w-4 text-violet-300" />
-                              <span>Checked in at {formatDateTime(ticket.checkedInAt)}</span>
+                              <span>
+                                Checked in at{" "}
+                                {formatDateTime(ticket.checkedInAt)}
+                              </span>
                             </div>
                           ) : null}
                         </div>
