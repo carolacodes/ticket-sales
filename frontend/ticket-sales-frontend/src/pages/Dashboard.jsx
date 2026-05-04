@@ -1,7 +1,7 @@
 // Dashboard.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-
+import { useMercadoPago } from "@/hooks/useMercadoPago";
 import { api } from "@/api/axios";
 
 import {
@@ -155,7 +155,7 @@ async function uploadEventBanner(eventId, file) {
 export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState(null);
-
+  const { connected, loading: mpLoading, connect } = useMercadoPago();
   const [q, setQ] = useState("");
   const [activeEventId, setActiveEventId] = useState(null);
 
@@ -265,6 +265,11 @@ export function Dashboard() {
   async function setStatus(eventId, nextStatus) {
     const status = String(nextStatus || "").toUpperCase().trim();
     if (!ALLOWED_STATUS.has(status)) return;
+
+    if (status === "PUBLISHED" && !connected) {
+      alert("You need to connect Mercado Pago before publishing events.");
+      return;
+    }
 
     await updateEventStatusRequest(eventId, { status });
     await load();
@@ -630,7 +635,20 @@ export function Dashboard() {
           </Button>
         </div>
       </div>
+            {!mpLoading && !connected && (
+              <div className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex items-center justify-between">
+                <div className="text-sm text-amber-200">
+                  You haven’t connected Mercado Pago yet. You won’t receive payments.
+                </div>
 
+                <Button
+                  className="rounded-2xl bg-violet-600 hover:bg-violet-500"
+                  onClick={connect}
+                >
+                  Connect
+                </Button>
+              </div>
+            )}
       {/* KPI ROW */}
       <div className="mt-8 grid gap-4 md:grid-cols-3">
         <KpiCard
@@ -1007,6 +1025,27 @@ export function Dashboard() {
             <Dialog.Description className="sr-only">
               Create an event and optionally upload a banner image.
             </Dialog.Description>
+
+            {!mpLoading && !connected && (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 mb-5">
+                You need to connect Mercado Pago to receive payments.
+                <div className="mt-2">
+                  <Button
+                    type="button"
+                    className="rounded-2xl bg-violet-600 hover:bg-violet-500"
+                    onClick={connect}
+                  >
+                    Connect Mercado Pago
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {!mpLoading && connected && (
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                Mercado Pago connected. You will receive payments here ✅
+              </div>
+            )}
 
             <div className="flex items-start justify-between">
               <div>

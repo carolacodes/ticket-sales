@@ -145,10 +145,12 @@ export function parseMercadoPagoSignature(signatureHeader) {
         secret,
     });
 
-    const ok = crypto.timingSafeEqual(
-        Buffer.from(expected, "utf8"),
-        Buffer.from(v1, "utf8")
-    );
+    const expectedBuffer = Buffer.from(expected, "utf8");
+    const receivedBuffer = Buffer.from(v1, "utf8");
+
+    const ok =
+        expectedBuffer.length === receivedBuffer.length &&
+        crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
 
     return {
         ok,

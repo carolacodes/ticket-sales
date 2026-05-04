@@ -20,17 +20,26 @@ const userSchema = new mongoose.Schema(
         passwordChangedAt: { type: Date, default: null },
         // Para login con Google/Facebook (simple)
         oauthProviders: {
-        type: [
-            {
-            provider: { type: String, enum: ["google", "facebook"], required: true },
-            providerUserId: { type: String, required: true },
-            },
-        ],
-        default: [],
+            type: [
+                {
+                provider: { type: String, enum: ["google", "facebook"], required: true },
+                providerUserId: { type: String, required: true },
+                },
+            ],
+            default: [],
         },
         avatarUrl: { type: String, trim: true },
         avatarPublicId: { type: String, trim: true },
         lastLoginAt: { type: Date, default: null },
+        mercadoPago: {
+            accessToken: { type: String, default: null },
+            refreshToken: { type: String, default: null },
+            publicKey: { type: String, default: null },
+            mpUserId: { type: String, default: null },
+            tokenType: { type: String, default: null },
+            expiresIn: { type: Number, default: null },
+            connectedAt: { type: Date, default: null },
+        },
     },
     { timestamps: true }
 );

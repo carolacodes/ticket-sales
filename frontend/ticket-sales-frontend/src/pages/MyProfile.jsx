@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
+import { useMercadoPago } from "@/hooks/useMercadoPago";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getMeRequest,
@@ -84,7 +84,7 @@ const LS_AVATAR_KEY = (userId) => `ticketx_avatarUrl:${userId}`;
 export function MyProfile() {
   const nav = useNavigate();
   const { user: ctxUser, setUser: setCtxUser, logout } = useAuth();
-
+  const { connected, loading: mpLoading, connect } = useMercadoPago();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -1006,7 +1006,40 @@ export function MyProfile() {
               </div>
             </CardContent>
           </Card>
+          {/* Payments */}
+          <Card className="border-white/10 bg-white/5">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3">
+                <div className="h-6 w-1 rounded-full bg-violet-600" />
+                <h2 className="text-lg font-semibold">Payments</h2>
+              </div>
 
+              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5">
+                {mpLoading ? (
+                  <div className="text-sm text-white/50">Checking Mercado Pago...</div>
+                ) : connected ? (
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-emerald-300">
+                      Mercado Pago connected ✅
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm text-amber-300">
+                      Connect Mercado Pago to receive payments
+                    </div>
+
+                    <Button
+                      className="rounded-2xl bg-violet-600 hover:bg-violet-500"
+                      onClick={connect}
+                    >
+                      Connect
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
           {/* Activity */}
           <Card className="border-white/10 bg-white/5">
             <CardContent className="p-6">
