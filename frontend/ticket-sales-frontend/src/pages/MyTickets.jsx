@@ -4,494 +4,653 @@ import { Link } from "react-router-dom";
 import { getMyTickets } from "@/api/tickets.api.js";
 import { getEventById, getEventTicketTypes } from "@/api/events.api.js";
 
-import { SiteNavbar } from "@/components/layout/SiteNavbar";
-import { UserNavbar } from "@/components/layout/UserNavbar";
-
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-
-import * as Dialog from "@radix-ui/react-dialog";
 import { QRCodeCanvas } from "qrcode.react";
-import {
-    Search,
-    Ticket,
-    X,
-    Copy,
-    Download,
-    MapPin,
-    Calendar,
-} from "lucide-react";
 
-function safeBanner(url) {
-    return (
-        url ||
-        "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&w=1600&q=80"
-    );
+function safeBanner(url, status = "VALID") {
+  if (url) return url;
+
+  if (String(status).toUpperCase() === "USED") {
+    return "https://lh3.googleusercontent.com/aida-public/AB6AXuAVgphyeqCY_4qt9lACpj_q9Rm2yccGt0r5JXo4ThKLI_4qBWGNxjSJDUOoSjIEfp5IhlFrP_Oj6LluhWGd6pzY_zhEuRf65gAuHa9FWS0jYNE4wXvPs905ufnGw0YSpdPPniyPmMMIpzlEG5gOY8D-1DhkQ_ddxbo0s0wPCm0pcSKViQszb5ZnIz-dQmSy81ZNA5sNCcF7DlyXJ4Q57K9W2BdqocAsj7Os8nW2ssOpO26Nsxv3_BtykqtuHoL_vaV827f5D8EM-X0h";
+  }
+
+  return "https://lh3.googleusercontent.com/aida-public/AB6AXuCdRcjj_b9gynAjOsMUp2HWZdC54tMjJ1UqNkyztYZDEeihjwxTonkchnYAbgayOD15s43J5PfxGy1_mfaY7c3YiZJm5X2v_GE3_orioUOagKKiJRtg7ti0GhBhWSHeVfCMohqp0iwMDxNtajieh5uWagaVQxkiyGNwdy7stl4Wf3BFVGE80BzQxEoLhP-0l9QbiGk5AtYI65ELQSBfL4O7o3hXxKQf8OMs01qpXu0U1vH_cVMaCdM0YKJl19DUVPoSdtgg34WDWiL9";
+}
+
+function normalizeStatus(status = "") {
+  return String(status || "").toUpperCase();
+}
+
+function formatTagLabel(tag = "") {
+  const dictionary = {
+    music: "Concierto",
+    musica: "Concierto",
+    música: "Concierto",
+    concert: "Concierto",
+    concerts: "Concierto",
+    concierto: "Concierto",
+    conciertos: "Concierto",
+    sports: "Deportes",
+    sport: "Deportes",
+    deportes: "Deportes",
+    theater: "Teatro",
+    theatre: "Teatro",
+    teatro: "Teatro",
+    festivals: "Festivales",
+    festival: "Festivales",
+    festivales: "Festivales",
+    comedy: "Comedia",
+    comedia: "Comedia",
+  };
+
+  const clean = String(tag || "").trim();
+  const lower = clean.toLowerCase();
+
+  if (dictionary[lower]) return dictionary[lower];
+
+  return clean
+    ? clean
+        .split(/\s+/)
+        .map(
+          (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+        )
+        .join(" ")
+    : "Evento";
+}
+
+function getDateParts(iso) {
+  if (!iso) return { day: "--", month: "---" };
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return { day: "--", month: "---" };
+
+  return {
+    day: date.toLocaleDateString("es-AR", { day: "2-digit" }),
+    month: date
+      .toLocaleDateString("es-AR", { month: "short" })
+      .replace(".", "")
+      .toUpperCase(),
+  };
+}
+
+function formatTime(iso) {
+  if (!iso) return "—";
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatDateTime(iso) {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    const date = d.toLocaleDateString("es-AR", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-    });
-    const time = d.toLocaleTimeString("es-AR", {
-        hour: "2-digit",
-        minute: "2-digit",
-    });
-    return `${date} • ${time}`;
+  if (!iso) return "—";
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const dateText = date.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
+  const timeText = date.toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return `${dateText} • ${timeText}`;
 }
 
-function statusBadge(status) {
-    const s = (status || "").toUpperCase();
-    if (s === "VALID")
-        return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
-    if (s === "USED")
-        return "border-yellow-500/20 bg-yellow-500/10 text-yellow-200";
-    return "border-white/10 bg-white/10 text-white";
-}
-
-function typeBadge(name) {
-    const n = (name || "").toUpperCase();
-    if (n === "VIP") return "border-violet-500/20 bg-violet-600/15 text-violet-200";
-    return "border-sky-500/20 bg-sky-500/10 text-sky-200";
+function getTicketId(ticket) {
+  return ticket?._id || ticket?.id;
 }
 
 export function MyTickets() {
+  const [tickets, setTickets] = useState([]);
+  const [eventsMap, setEventsMap] = useState({});
+  const [ttMap, setTtMap] = useState({});
 
-    const [tickets, setTickets] = useState([]);
-    const [eventsMap, setEventsMap] = useState({});
-    const [ttMap, setTtMap] = useState({}); // ticketTypeId -> { name, price, ... }
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
 
-    const [loading, setLoading] = useState(true);
-    const [err, setErr] = useState("");
+  const [query, setQuery] = useState("");
+  const [tab, setTab] = useState("ALL");
 
-    // UI controls
-    const [query, setQuery] = useState("");
-    const [tab, setTab] = useState("VALID"); // VALID | USED
+  const [open, setOpen] = useState(false);
+  const [activeTicket, setActiveTicket] = useState(null);
+  const qrCanvasRef = useRef(null);
 
-    // Modal
-    const [open, setOpen] = useState(false);
-    const [activeTicket, setActiveTicket] = useState(null);
-    const qrCanvasRef = useRef(null);
+  useEffect(() => {
+    let alive = true;
 
-    useEffect(() => {
-        let alive = true;
+    async function run() {
+      try {
+        setLoading(true);
+        setErr("");
 
-        async function run() {
-        try {
-            setLoading(true);
-            setErr("");
+        const response = await getMyTickets();
+        const list = response?.data?.tickets ?? [];
 
-            // 1) Tickets del usuario
-            const res = await getMyTickets();
-            const list = res?.data?.tickets ?? [];
-            if (!alive) return;
+        if (!alive) return;
 
-            setTickets(Array.isArray(list) ? list : []);
+        const safeTickets = Array.isArray(list) ? list : [];
 
-            // 2) Enriquecer (eventos + ticketTypes)
-            const uniqueEventIds = [...new Set((list || []).map((t) => t.eventId).filter(Boolean))];
+        setTickets(safeTickets);
 
-            // Traemos todos los eventos
-            const evPairs = await Promise.all(
-            uniqueEventIds.map(async (eid) => {
-                const r = await getEventById(eid);
-                return [eid, r?.data?.event ?? null];
-            })
-            );
+        const uniqueEventIds = [
+          ...new Set(
+            safeTickets.map((ticket) => ticket.eventId).filter(Boolean)
+          ),
+        ];
 
-            const nextEventsMap = Object.fromEntries(evPairs.filter(([, ev]) => ev));
-            if (!alive) return;
-            setEventsMap(nextEventsMap);
+        const eventPairs = await Promise.all(
+          uniqueEventIds.map(async (eventId) => {
+            const eventResponse = await getEventById(eventId);
 
-            // Traemos ticket types por evento y armamos map global por id
-            const ttByEvent = await Promise.all(
-            uniqueEventIds.map(async (eid) => {
-                const r = await getEventTicketTypes(eid);
-                return r?.data?.ticketTypes ?? [];
-            })
-            );
+            return [
+              eventId,
+              eventResponse?.data?.event ?? eventResponse?.data ?? null,
+            ];
+          })
+        );
 
-            const flatTT = ttByEvent.flat().filter(Boolean);
-            const nextTTMap = {};
-            for (const tt of flatTT) {
-            // tu response usa "id" como key
-            if (tt?.id) nextTTMap[tt.id] = tt;
-            }
-            if (!alive) return;
-            setTtMap(nextTTMap);
-        } catch (e) {
-            setErr("No se pudieron cargar tus tickets. Error: " + e.message);
-        } finally {
-            if (!alive) return;
-            setLoading(false);
+        if (!alive) return;
+
+        const nextEventsMap = Object.fromEntries(
+          eventPairs.filter(([, event]) => Boolean(event))
+        );
+
+        setEventsMap(nextEventsMap);
+
+        const ticketTypesByEvent = await Promise.all(
+          uniqueEventIds.map(async (eventId) => {
+            const ticketTypesResponse = await getEventTicketTypes(eventId);
+            return ticketTypesResponse?.data?.ticketTypes ?? [];
+          })
+        );
+
+        if (!alive) return;
+
+        const nextTicketTypesMap = {};
+
+        ticketTypesByEvent
+          .flat()
+          .filter(Boolean)
+          .forEach((ticketType) => {
+            const id = ticketType.id || ticketType._id;
+            if (id) nextTicketTypesMap[id] = ticketType;
+          });
+
+        setTtMap(nextTicketTypesMap);
+      } catch (error) {
+        console.error("MY_TICKETS_ERROR:", error);
+        setErr("No se pudieron cargar tus tickets.");
+      } finally {
+        if (!alive) return;
+        setLoading(false);
+      }
+    }
+
+    run();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const filteredTickets = useMemo(() => {
+    const search = query.trim().toLowerCase();
+
+    return (tickets || [])
+      .filter((ticket) => {
+        const status = normalizeStatus(ticket.status);
+
+        if (tab === "VALID") return status === "VALID";
+        if (tab === "USED") return status === "USED";
+
+        return true;
+      })
+      .filter((ticket) => {
+        if (!search) return true;
+
+        const event = eventsMap[ticket.eventId];
+        const ticketType = ttMap[ticket.ticketTypeId];
+
+        const searchable = [
+          event?.title,
+          event?.venue,
+          event?.city,
+          event?.category,
+          ...(event?.tags || []),
+          ticketType?.name,
+          ticket.code,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return searchable.includes(search);
+      });
+  }, [tickets, tab, query, eventsMap, ttMap]);
+
+  const activeEvent = activeTicket ? eventsMap[activeTicket.eventId] : null;
+  const activeTT = activeTicket ? ttMap[activeTicket.ticketTypeId] : null;
+
+  function openTicketModal(ticket) {
+    setActiveTicket(ticket);
+    setOpen(true);
+  }
+
+  function closeModal() {
+    setOpen(false);
+    setActiveTicket(null);
+  }
+
+  async function copyCode() {
+    if (!activeTicket?.code) return;
+
+    try {
+      await navigator.clipboard.writeText(activeTicket.code);
+    } catch {
+      // ignore clipboard errors
+    }
+  }
+
+  function downloadQR() {
+    const canvas = qrCanvasRef.current;
+
+    if (!canvas) return;
+
+    const jpgUrl = canvas.toDataURL("image/jpeg", 0.95);
+    const anchor = document.createElement("a");
+
+    anchor.href = jpgUrl;
+    anchor.download = `ticket-qr-${activeTicket?.code?.slice(0, 8) || "qr"}.jpg`;
+    anchor.click();
+  }
+
+  return (
+    <div className="ticketify-tickets bg-[#f3faff] text-[#001f29]">
+      <style>{`
+        .ticket-card-shadow {
+          box-shadow: 0px 4px 20px rgba(23, 86, 118, 0.08);
         }
+
+        .modal-backdrop {
+          background-color: rgba(0, 31, 41, 0.6);
+          backdrop-filter: blur(4px);
         }
+      `}</style>
 
-        run();
-        return () => {
-        alive = false;
-        };
-    }, []);
+      <main className="tf-container py-12">
+        <header className="mb-12">
+          <h1 className="mb-2 text-[32px] font-bold leading-10 text-[#215d7d]">
+            Mis entradas
+          </h1>
 
-    const filtered = useMemo(() => {
-        const q = query.trim().toLowerCase();
+          <p className="text-[18px] leading-7 text-[#5b403f]">
+            Revisá tus tickets comprados y accedé a tus códigos QR.
+          </p>
+        </header>
 
-        return (tickets || [])
-        .filter((t) => {
-            // tab filter
-            const st = (t.status || "").toUpperCase();
-            if (tab === "VALID") return st === "VALID";
-            if (tab === "USED") return st === "USED";
-            return true;
-        })
-        .filter((t) => {
-            if (!q) return true;
+        <section className="mb-10 flex flex-col items-center justify-between gap-6 md:flex-row">
+          <div className="relative w-full md:w-1/2">
+            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[#215d7d]">
+              search
+            </span>
 
-            const ev = eventsMap[t.eventId];
-            const tt = ttMap[t.ticketTypeId];
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="w-full rounded-lg border border-[#e4bdbc] bg-white py-3 pl-12 pr-4 text-[#001f29] outline-none transition-all placeholder:text-[#906f6e] focus:border-[#d62839] focus:ring-2 focus:ring-[#d62839]/20"
+              placeholder="Buscar por nombre del evento, categoría o ubicación"
+              type="text"
+            />
+          </div>
 
-            const hay = [
-            ev?.title,
-            ev?.venue,
-            ev?.city,
-            tt?.name,
-            t.code,
-            ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
+          <div className="flex w-full overflow-x-auto rounded-xl bg-[#e5f6ff] p-1 md:w-auto">
+            <TabButton active={tab === "ALL"} onClick={() => setTab("ALL")}>
+              Todos
+            </TabButton>
 
-            return hay.includes(q);
-        });
-    }, [tickets, tab, query, eventsMap, ttMap]);
+            <TabButton active={tab === "VALID"} onClick={() => setTab("VALID")}>
+              Válidos
+            </TabButton>
 
-    function openTicketModal(t) {
-        setActiveTicket(t);
-        setOpen(true);
-    }
+            <TabButton active={tab === "USED"} onClick={() => setTab("USED")}>
+              Usados
+            </TabButton>
+          </div>
+        </section>
 
-    function closeModal() {
-        setOpen(false);
-        setActiveTicket(null);
-    }
+        {loading ? (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div
+                key={index}
+                className="ticket-card-shadow overflow-hidden rounded-xl border border-[#e4bdbc] bg-white"
+              >
+                <div className="h-48 animate-pulse bg-[#d8f2ff]" />
 
-    async function copyCode() {
-        if (!activeTicket?.code) return;
-        try {
-        await navigator.clipboard.writeText(activeTicket.code);
-        } catch {
-        // fallback: nada
-        }
-    }
-
-    function downloadQR() {
-        // QRCodeCanvas renderiza un <canvas> -> lo descargamos como PNG
-        const canvas = qrCanvasRef.current;
-        if (!canvas) return;
-        const pngUrl = canvas.toDataURL("image/png");
-        const a = document.createElement("a");
-        a.href = pngUrl;
-        a.download = `ticket-qr-${activeTicket?.code?.slice(0, 8) || "qr"}.png`;
-        a.click();
-    }
-
-    const activeEvent = activeTicket ? eventsMap[activeTicket.eventId] : null;
-    const activeTT = activeTicket ? ttMap[activeTicket.ticketTypeId] : null;
-
-    return (
-        <>
-
-        <div className="mx-auto max-w-6xl px-4 py-10">
-            {/* Header row */}
-            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div>
-                <h1 className="text-5xl font-extrabold tracking-tight md:text-6xl">
-                MY TICKETS
-                </h1>
-                <p className="mt-3 text-sm text-white/60">
-                Manage and access your digital event passes.
-                </p>
-            </div>
-
-            {/* Search + tabs */}
-            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
-                <div className="relative w-full md:w-[320px]">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                <Input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search events..."
-                    className="h-11 rounded-full border-white/10 bg-white/5 pl-10"
-                />
+                <div className="space-y-4 p-6">
+                  <div className="h-4 w-24 animate-pulse rounded bg-[#d8f2ff]" />
+                  <div className="h-7 w-2/3 animate-pulse rounded bg-[#d8f2ff]" />
+                  <div className="h-4 w-1/2 animate-pulse rounded bg-[#d8f2ff]" />
+                  <div className="h-12 w-full animate-pulse rounded bg-[#d8f2ff]" />
                 </div>
+              </div>
+            ))}
+          </div>
+        ) : err ? (
+          <div className="ticket-card-shadow rounded-xl border border-[#e4bdbc] bg-white p-6 text-[#5b403f]">
+            {err}
+          </div>
+        ) : filteredTickets.length === 0 ? (
+          <div className="ticket-card-shadow rounded-xl border border-[#e4bdbc] bg-white p-6 text-[#5b403f]">
+            No hay tickets para mostrar.
+            <div className="mt-3">
+              <Link className="font-bold text-[#b20024] hover:underline" to="/events">
+                Ir a explorar eventos
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <section className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {filteredTickets.map((ticket) => {
+              const event = eventsMap[ticket.eventId];
+              const ticketType = ttMap[ticket.ticketTypeId];
+              const status = normalizeStatus(ticket.status);
+              const isUsed = status === "USED";
+              const date = getDateParts(event?.startAt);
+              const category = formatTagLabel(
+                event?.tags?.[0] || event?.category || "Evento"
+              );
 
-                <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
-                <button
-                    onClick={() => setTab("VALID")}
-                    className={[
-                    "h-9 rounded-full px-5 text-sm transition",
-                    tab === "VALID"
-                        ? "bg-violet-600 text-white"
-                        : "text-white/70 hover:text-white",
-                    ].join(" ")}
+              return (
+                <article
+                  key={getTicketId(ticket)}
+                  className={[
+                    "ticket-card-shadow group overflow-hidden rounded-xl border border-[#e4bdbc] bg-white transition-transform duration-300 hover:-translate-y-1",
+                    isUsed ? "opacity-80 grayscale-[0.6]" : "",
+                  ].join(" ")}
                 >
-                    Valid
-                </button>
-                <button
-                    onClick={() => setTab("USED")}
-                    className={[
-                    "h-9 rounded-full px-5 text-sm transition",
-                    tab === "USED"
-                        ? "bg-violet-600 text-white"
-                        : "text-white/70 hover:text-white",
-                    ].join(" ")}
-                >
-                    Used
-                </button>
-                </div>
-            </div>
-            </div>
+                  <div className="relative h-48">
+                    <img
+                      src={safeBanner(event?.bannerUrl, status)}
+                      alt={event?.title || "Evento"}
+                      className="h-full w-full object-cover"
+                    />
 
-            {/* Content */}
-            <div className="mt-10">
-            {loading ? (
-                <div className="grid gap-6 md:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                    <Card key={i} className="border-white/10 bg-white/5">
-                    <div className="h-44 animate-pulse bg-white/10" />
-                    <CardContent className="p-6">
-                        <div className="h-5 w-2/3 animate-pulse rounded bg-white/10" />
-                        <div className="mt-3 h-4 w-1/2 animate-pulse rounded bg-white/10" />
-                        <div className="mt-6 h-11 w-full animate-pulse rounded-2xl bg-white/10" />
-                    </CardContent>
-                    </Card>
-                ))}
-                </div>
-            ) : err ? (
-                <Card className="border-white/10 bg-white/5">
-                <CardContent className="p-6 text-sm text-white/70">{err}</CardContent>
-                </Card>
-            ) : filtered.length === 0 ? (
-                <Card className="border-white/10 bg-white/5">
-                <CardContent className="p-6 text-sm text-white/70">
-                    No hay tickets para mostrar.
-                    <div className="mt-3">
-                    <Link className="text-violet-300 hover:text-violet-200" to="/events">
-                        → Ir a Events
-                    </Link>
+                    <div className="absolute left-4 top-4 rounded-md bg-white/95 px-3 py-1 text-center backdrop-blur-sm">
+                      <span
+                        className={[
+                          "block text-[24px] font-bold leading-none",
+                          isUsed ? "text-[#5b403f]" : "text-[#b20024]",
+                        ].join(" ")}
+                      >
+                        {date.day}
+                      </span>
+
+                      <span
+                        className={[
+                          "block text-xs font-bold uppercase",
+                          isUsed ? "text-[#5b403f]" : "text-[#215d7d]",
+                        ].join(" ")}
+                      >
+                        {date.month}
+                      </span>
                     </div>
-                </CardContent>
-                </Card>
-            ) : (
-                <div className="grid gap-6 md:grid-cols-3">
-                {filtered.map((t) => {
-                    const ev = eventsMap[t.eventId];
-                    const tt = ttMap[t.ticketTypeId];
 
-                    return (
-                    <Card
-                        key={t._id}
-                        className="overflow-hidden rounded-3xl border-white/10 bg-white/5"
+                    <div
+                      className={[
+                        "absolute right-4 top-4 rounded-full px-3 py-1 text-xs font-bold shadow-sm",
+                        isUsed
+                          ? "bg-[#e4bdbc] text-[#5b403f]"
+                          : "bg-[#fd647f] text-[#680020]",
+                      ].join(" ")}
                     >
-                        <div className="relative">
-                        <img
-                            src={safeBanner(ev?.bannerUrl)}
-                            alt={ev?.title || "Event"}
-                            className="h-44 w-full object-cover"
-                        />
-                        <div className="absolute right-4 top-4">
-                            <Badge className={["rounded-full px-3 py-1", statusBadge(t.status)].join(" ")}>
-                            {(t.status || "—").toUpperCase()}
-                            </Badge>
-                        </div>
-                        </div>
-
-                        <CardContent className="p-6">
-                        <div className="text-lg font-semibold leading-tight">
-                            {(ev?.title || "Event").toUpperCase()}
-                        </div>
-
-                        <div className="mt-3 grid gap-2 text-sm text-white/60">
-                            <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-violet-300" />
-                            <span>{formatDateTime(ev?.startAt)}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-violet-300" />
-                            <span>{ev?.venue || "—"}{ev?.city ? `, ${ev.city}` : ""}</span>
-                            </div>
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap items-center gap-2">
-                            <Badge className={["rounded-full px-3 py-1", typeBadge(tt?.name)].join(" ")}>
-                            {(tt?.name || "TICKET").toUpperCase()}
-                            </Badge>
-                            <Badge className="rounded-full border-white/10 bg-white/10 px-3 py-1 text-white">
-                            <Ticket className="mr-1 inline h-4 w-4" />
-                            {t.code?.slice(0, 8)}…
-                            </Badge>
-                        </div>
-
-                        <Button
-                            className="mt-6 h-11 w-full rounded-2xl bg-violet-600 hover:bg-violet-500"
-                            onClick={() => openTicketModal(t)}
-                        >
-                            ▣ VIEW QR TICKET
-                        </Button>
-                        </CardContent>
-                    </Card>
-                    );
-                })}
-                </div>
-            )}
-            </div>
-
-            {/* Help Card */}
-            <Card className="mt-10 border-white/10 bg-white/5">
-            <CardContent className="flex flex-col items-start justify-between gap-4 p-6 md:flex-row md:items-center">
-                <div className="flex items-center gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-violet-600/15 ring-1 ring-violet-500/25">
-                    ?
-                </div>
-                <div>
-                    <div className="font-semibold text-white/90">Need help with your tickets?</div>
-                    <div className="text-sm text-white/60">
-                    Visit our help center or contact our 24/7 support.
+                      {isUsed ? "Usado" : "Válido"}
                     </div>
-                </div>
-                </div>
-                <Button
-                variant="outline"
-                className="rounded-full border-violet-500/25 bg-white/5 hover:bg-white/10"
-                onClick={() => alert("Luego lo conectamos 😉")}
-                >
-                SUPPORT CENTER
-                </Button>
-            </CardContent>
-            </Card>
+                  </div>
+
+                  <div className="p-6">
+                    <div className="mb-2 flex items-start justify-between">
+                      <span
+                        className={[
+                          "text-xs font-bold uppercase tracking-widest",
+                          isUsed ? "text-[#5b403f]" : "text-[#b20024]",
+                        ].join(" ")}
+                      >
+                        {category}
+                      </span>
+
+                      <span className="text-xs text-[#5b403f]">
+                        {formatTime(event?.startAt)} hs
+                      </span>
+                    </div>
+
+                    <h3
+                      className={[
+                        "mb-3 text-[24px] font-bold leading-8 transition-colors",
+                        isUsed
+                          ? "text-[#5b403f]"
+                          : "text-[#215d7d] group-hover:text-[#b20024]",
+                      ].join(" ")}
+                    >
+                      {event?.title || "Evento"}
+                    </h3>
+
+                    <div className="mb-6 space-y-2">
+                      <div className="flex items-center gap-2 text-[#5b403f]">
+                        <span className="material-symbols-outlined text-sm">
+                          location_on
+                        </span>
+
+                        <span className="text-[14px] font-semibold leading-5 tracking-[0.05em]">
+                          {[event?.venue, event?.city].filter(Boolean).join(", ") ||
+                            "Ubicación a confirmar"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[#5b403f]">
+                        <span className="material-symbols-outlined text-sm">
+                          confirmation_number
+                        </span>
+
+                        <span className="text-[14px] font-semibold leading-5 tracking-[0.05em]">
+                          {ticketType?.name || "Entrada"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {isUsed ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-[#906f6e] py-3 text-[16px] font-bold text-white"
+                      >
+                        <span className="material-symbols-outlined">history</span>
+                        Ticket Usado
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openTicketModal(ticket)}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d62839] py-3 text-[16px] font-bold text-white transition-all hover:opacity-90 active:scale-[0.98]"
+                      >
+                        <span className="material-symbols-outlined">qr_code_2</span>
+                        Ver QR
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </section>
+        )}
+      </main>
+
+      {open ? (
+        <QrModal
+          activeTicket={activeTicket}
+          activeEvent={activeEvent}
+          activeTT={activeTT}
+          qrCanvasRef={qrCanvasRef}
+          onClose={closeModal}
+          onCopy={copyCode}
+          onDownload={downloadQR}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-lg px-8 py-2 text-[14px] font-semibold leading-5 tracking-[0.05em] transition-all",
+        active
+          ? "bg-[#b20024] text-white"
+          : "text-[#5b403f] hover:text-[#b20024]",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function QrModal({
+  activeTicket,
+  activeEvent,
+  activeTT,
+  qrCanvasRef,
+  onClose,
+  onCopy,
+  onDownload,
+}) {
+  const date = getDateParts(activeEvent?.startAt);
+  const status = normalizeStatus(activeTicket?.status);
+  const isUsed = status === "USED";
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+      <button
+        type="button"
+        className="modal-backdrop absolute inset-0"
+        onClick={onClose}
+        aria-label="Cerrar modal"
+      />
+
+      <div className="relative z-10 max-h-[88vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between bg-[#215d7d] p-6 text-white">
+          <h2 className="text-[24px] font-bold leading-8">
+            Tu Ticket Digital
+          </h2>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="material-symbols-outlined rounded-full p-1 transition-colors hover:bg-white/10"
+          >
+            close
+          </button>
         </div>
 
-        {/* QR MODAL */}
-        <Dialog.Root open={open} onOpenChange={(v) => (v ? null : closeModal())}>
-            <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
+        <div className="flex flex-col items-center p-8">
+          <div className="relative mb-8 flex h-64 w-64 items-center justify-center rounded-xl border-8 border-[#d8f2ff] bg-white">
+            <QRCodeCanvas
+              value={activeTicket?.code || ""}
+              size={210}
+              includeMargin
+              ref={qrCanvasRef}
+            />
 
-            <Dialog.Content
-                className="
-                    fixed left-1/2 top-1/2 z-50
-                    w-[92vw] max-w-md
-                    -translate-x-1/2 -translate-y-1/2
-                    rounded-3xl border border-white/10
-                    bg-[#0b0812]/95 shadow-2xl
-                    max-h-[85vh] overflow-y-auto
-                "
+            <div className="absolute -bottom-3 rounded-full bg-[#b20024] px-3 py-1 text-[10px] font-bold text-white">
+              ESCANEAME EN EL ACCESO
+            </div>
+          </div>
+
+          <div className="mb-8 w-full space-y-4 text-center">
+            <div>
+              <h4 className="text-[24px] font-bold leading-8 text-[#215d7d]">
+                {activeEvent?.title || "Evento"}
+              </h4>
+
+              <p className="text-[#5b403f]">
+                {date.day} {date.month} •{" "}
+                {activeEvent?.venue || "Lugar a confirmar"}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 border-t border-[#e4bdbc] pt-4">
+              <div className="text-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#5b403f]">
+                  Ticket
+                </p>
+
+                <p className="font-bold text-[#215d7d]">
+                  {activeTT?.name || "Entrada"}
+                </p>
+              </div>
+
+              <div className="text-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#5b403f]">
+                  Código
+                </p>
+
+                <button
+                  type="button"
+                  onClick={onCopy}
+                  className="font-bold text-[#215d7d] hover:underline"
                 >
-                {/* HEADER STICKY */}
-                <div className="sticky top-0 z-10 border-b border-white/10 bg-[#0b0812]/95 px-6 pt-6 pb-4 backdrop-blur-sm">
-                    <div className="flex items-start justify-between">
-                    <div className="text-xs uppercase tracking-widest text-violet-300">
-                        Your entry pass
-                    </div>
-                    <button
-                        onClick={closeModal}
-                        className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
-                        aria-label="Close"
-                    >
-                        <X className="h-4 w-4" />
-                    </button>
-                    </div>
+                  {activeTicket?.code || "—"}
+                </button>
+              </div>
+            </div>
 
-                    <div className="mt-2 text-3xl font-extrabold">
-                    {(activeEvent?.title || "EVENT").toUpperCase()}
-                    </div>
+            <div className="rounded-lg bg-[#e5f6ff] p-4 text-left">
+              <p className="text-sm text-[#5b403f]">
+                <strong>Fecha y hora:</strong>{" "}
+                {formatDateTime(activeEvent?.startAt)}
+              </p>
 
-                    <div className="mt-3 flex flex-wrap gap-2">
-                    <Badge className={["rounded-full px-3 py-1", typeBadge(activeTT?.name)].join(" ")}>
-                        {(activeTT?.name || "TICKET").toUpperCase()}
-                    </Badge>
-                    <Badge className={["rounded-full px-3 py-1", statusBadge(activeTicket?.status)].join(" ")}>
-                        {(activeTicket?.status || "—").toUpperCase()}
-                    </Badge>
-                    </div>
-                </div>
+              <p className="mt-1 text-sm text-[#5b403f]">
+                <strong>Ubicación:</strong>{" "}
+                {[activeEvent?.venue, activeEvent?.city]
+                  .filter(Boolean)
+                  .join(", ") || "Ubicación a confirmar"}
+              </p>
 
-                {/* BODY SCROLLABLE */}
-                <div className="px-6 pb-6 pt-5">
+              <p className="mt-1 text-sm text-[#5b403f]">
+                <strong>Estado:</strong> {isUsed ? "Usado" : "Válido"}
+              </p>
+            </div>
+          </div>
 
-                    {/* QR */}
-                    <div className="grid place-items-center">
-                    <div className="rounded-2xl bg-white p-4 shadow-xl">
-                        <QRCodeCanvas
-                        value={activeTicket?.code || ""}
-                        size={190}
-                        includeMargin
-                        ref={qrCanvasRef}
-                        />
-                    </div>
-                    </div>
+          <button
+            type="button"
+            onClick={onDownload}
+            disabled={!activeTicket?.code}
+            className="flex w-full items-center justify-center gap-3 rounded-lg bg-[#215d7d] py-4 font-bold text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
+          >
+            <span className="material-symbols-outlined">download</span>
+            Descargar QR en JPG
+          </button>
 
-                    {/* Ticket ID */}
-                    <div className="mt-6 rounded-2xl border border-violet-500/20 bg-violet-600/10 p-4">
-                    <div className="text-[10px] uppercase tracking-widest text-white/50">
-                        Ticket ID
-                    </div>
-                    <div className="mt-2 flex items-center justify-between gap-3">
-                        <div className="font-mono text-lg font-semibold text-white">
-                        {activeTicket?.code || "—"}
-                        </div>
-                        <button
-                        onClick={copyCode}
-                        className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
-                        aria-label="Copy code"
-                        >
-                        <Copy className="h-4 w-4" />
-                        </button>
-                    </div>
-                    </div>
-
-                    {/* Info */}
-                    <div className="mt-5 grid grid-cols-2 gap-4 text-sm text-white/70">
-                    <div>
-                        <div className="text-[10px] uppercase tracking-widest text-white/45">
-                        Date & Time
-                        </div>
-                        <div className="mt-1 text-white/85">
-                        {formatDateTime(activeEvent?.startAt)}
-                        </div>
-                    </div>
-                    <div>
-                        <div className="text-[10px] uppercase tracking-widest text-white/45">
-                        Location
-                        </div>
-                        <div className="mt-1 text-white/85">
-                        {activeEvent?.venue || "—"}
-                        </div>
-                    </div>
-                    </div>
-
-                    <Separator className="my-6 bg-white/10" />
-
-                    <Button
-                    className="h-11 w-full rounded-2xl bg-violet-600 hover:bg-violet-500"
-                    onClick={downloadQR}
-                    disabled={!activeTicket?.code}
-                    >
-                    <Download className="mr-2 h-4 w-4" />
-                    DOWNLOAD QR (PNG)
-                    </Button>
-
-                </div>
-            </Dialog.Content>
-
-            </Dialog.Portal>
-        </Dialog.Root>
-        </>
-    );
+          <p className="mt-4 text-center text-xs text-[#5b403f]">
+            Mostrá este código al personal de seguridad en la entrada del evento.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }

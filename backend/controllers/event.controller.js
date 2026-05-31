@@ -473,26 +473,34 @@ export async function listTicketTypesPublic(req, res, next) {
 
 export async function uploadBanner(req, res) {
   try {
-    const imageUrl = req.file?.path; // URL final
-    const publicId = req.file?.filename; // Cloudinary public_id (multer-storage-cloudinary)
+    const imageUrl = req.file?.path;
+    const publicId = req.file?.filename;
 
     if (!imageUrl || !publicId) {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
     const event = await Event.findById(req.params.id);
-    if (!event) return res.status(404).json({ message: "Event not found" });
 
-    // ✅ borrar anterior (si existía)
+    if (!event) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
     if (event.bannerPublicId) {
       await cloudinary.uploader.destroy(event.bannerPublicId);
     }
 
     event.bannerUrl = imageUrl;
     event.bannerPublicId = publicId;
+
     await event.save();
 
-    return res.json({ event });
+    return res.json({
+      message: "Banner uploaded successfully",
+      bannerUrl: event.bannerUrl,
+      bannerPublicId: event.bannerPublicId,
+      event,
+    });
   } catch (err) {
     console.log("UPLOAD_BANNER_ERR", err);
     return res.status(500).json({ message: "Could not upload banner" });

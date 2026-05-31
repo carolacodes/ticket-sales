@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 import { useMercadoPago } from "@/hooks/useMercadoPago";
 import { useAuth } from "@/hooks/useAuth";
+
 import {
   getMeRequest,
   updateMeRequest,
@@ -17,38 +19,40 @@ import {
   forgotPasswordRequest,
 } from "@/api/auth.api";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-
-import * as Dialog from "@radix-ui/react-dialog";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Shield,
-  Trash2,
-  Eye,
-  EyeOff,
-  KeyRound,
-} from "lucide-react";
-
-/* =========================
-   Helpers
-========================= */
 function initials(str = "") {
-  const s = (str || "").trim();
-  if (!s) return "U";
-  const parts = s.split(" ").filter(Boolean);
-  const a = parts[0]?.[0] ?? "U";
-  const b = parts[1]?.[0] ?? parts[0]?.[1] ?? "";
-  return (a + b).toUpperCase();
+  const value = String(str || "").trim();
+
+  if (!value) return "U";
+
+  const parts = value.split(" ").filter(Boolean);
+  const first = parts[0]?.[0] || "U";
+  const second = parts[1]?.[0] || parts[0]?.[1] || "";
+
+  return `${first}${second}`.toUpperCase();
+}
+
+function formatDate(iso) {
+  if (!iso) return "—";
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 function formatDateTime(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("es-AR", {
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleString("es-AR", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -57,44 +61,32 @@ function formatDateTime(iso) {
   });
 }
 
-function formatDate(iso) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+function normalizeRole(role = "") {
+  return String(role || "").toUpperCase();
 }
 
-function roleBadge(role) {
-  if (role === "ORGANIZER") {
-    return "border-violet-500/25 bg-violet-600/10 text-violet-200";
-  }
-  return "border-white/10 bg-white/5 text-white/80";
-}
-
-function verifiedBadge(ok) {
-  return ok
-    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
-    : "border-amber-500/20 bg-amber-500/10 text-amber-200";
-}
-
-const LS_AVATAR_KEY = (userId) => `ticketx_avatarUrl:${userId}`;
+const LS_AVATAR_KEY = (userId) => `ticketify_avatarUrl:${userId}`;
 
 export function MyProfile() {
-  const nav = useNavigate();
+  const navigate = useNavigate();
+
   const { user: ctxUser, setUser: setCtxUser, logout } = useAuth();
   const { connected, loading: mpLoading, connect } = useMercadoPago();
+
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [switching, setSwitching] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
 
   const [me, setMe] = useState(null);
-  const [username, setUsername] = useState("");
 
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteWord, setDeleteWord] = useState("");
-  const canDelete = deleteWord.trim().toUpperCase() === "DELETE";
+  const [username, setUsername] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+
+  const [selectedRole, setSelectedRole] = useState("BUYER");
+  const [switchingRole, setSwitchingRole] = useState(false);
+
+  const [persistedAvatarUrl, setPersistedAvatarUrl] = useState("");
+  const [avatarV, setAvatarV] = useState(0);
 
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
@@ -102,92 +94,36 @@ export function MyProfile() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarErr, setAvatarErr] = useState("");
 
-  const [persistedAvatarUrl, setPersistedAvatarUrl] = useState("");
-  const [avatarV, setAvatarV] = useState(0);
-
-  // Security
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
-
-  const [showCurrentPass, setShowCurrentPass] = useState(false);
-  const [showNewPass, setShowNewPass] = useState(false);
-  const [showConfirmPass, setShowConfirmPass] = useState(false);
 
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordErr, setPasswordErr] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
 
-  // Forgot password
   const [forgotSending, setForgotSending] = useState(false);
-  const [forgotSuccess, setForgotSuccess] = useState("");
   const [forgotErr, setForgotErr] = useState("");
+  const [forgotSuccess, setForgotSuccess] = useState("");
 
-  useEffect(() => {
-    let alive = true;
-
-    async function run() {
-      try {
-        setLoading(true);
-
-        const r = await getMeRequest();
-        const u = r.data?.user ?? r.data ?? null;
-
-        if (!alive) return;
-
-        const userId = u?._id || u?.id;
-
-        let cached = "";
-        if (userId) {
-          try {
-            cached = localStorage.getItem(LS_AVATAR_KEY(userId)) || "";
-          } catch (e) {
-            console.log("LS_READ_AVATAR_ERR", e);
-          }
-        }
-
-        const patched = u && !u.avatarUrl && cached ? { ...u, avatarUrl: cached } : u;
-
-        setMe(patched);
-        setCtxUser?.(patched);
-        setUsername(u?.username ?? "");
-
-        if (userId && u?.avatarUrl) {
-          try {
-            localStorage.setItem(LS_AVATAR_KEY(userId), u.avatarUrl);
-          } catch (e) {
-            console.log("LS_WRITE_AVATAR_ERR", e);
-          }
-          setPersistedAvatarUrl(u.avatarUrl);
-        } else if (cached) {
-          setPersistedAvatarUrl(cached);
-        }
-      } catch (err) {
-        console.log("GET_ME_ERR", err?.response?.data || err?.message);
-      } finally {
-        if (!alive) return;
-        setLoading(false);
-      }
-    }
-
-    run();
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteWord, setDeleteWord] = useState("");
 
   const displayUser = useMemo(() => {
-    const base = me ?? ctxUser ?? null;
+    const base = me || ctxUser || null;
+
     if (!base) return null;
 
-    const avatarUrl = base.avatarUrl || persistedAvatarUrl || "";
     return {
       ...base,
-      avatarUrl,
-      hasPassword: !!base?.hasPassword,
+      avatarUrl: base.avatarUrl || persistedAvatarUrl || "",
+      hasPassword: Boolean(base.hasPassword),
     };
   }, [me, ctxUser, persistedAvatarUrl]);
+
+  const avatarSrc = displayUser?.avatarUrl
+    ? `${displayUser.avatarUrl}${displayUser.avatarUrl.includes("?") ? "&" : "?"}v=${avatarV}`
+    : "";
 
   const passwordsMatch = newPassword === confirmNewPassword;
 
@@ -198,9 +134,83 @@ export function MyProfile() {
     passwordsMatch;
 
   const canSetPassword =
-    newPassword.trim() &&
-    confirmNewPassword.trim() &&
-    passwordsMatch;
+    newPassword.trim() && confirmNewPassword.trim() && passwordsMatch;
+
+  const canDelete = deleteWord.trim().toUpperCase() === "DELETE";
+
+  const securityLevel = useMemo(() => {
+    let score = 35;
+
+    if (displayUser?.emailVerified) score += 25;
+    if (displayUser?.hasPassword) score += 20;
+    if (displayUser?.avatarUrl) score += 10;
+    if (connected) score += 10;
+
+    return Math.min(100, score);
+  }, [displayUser, connected]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function run() {
+      try {
+        setLoading(true);
+
+        const response = await getMeRequest();
+        const user = response.data?.user ?? response.data ?? null;
+
+        if (!alive) return;
+
+        const userId = user?._id || user?.id;
+
+        let cachedAvatar = "";
+
+        if (userId) {
+          try {
+            cachedAvatar = localStorage.getItem(LS_AVATAR_KEY(userId)) || "";
+          } catch (error) {
+            console.log("LS_READ_AVATAR_ERR", error);
+          }
+        }
+
+        const patchedUser =
+          user && !user.avatarUrl && cachedAvatar
+            ? { ...user, avatarUrl: cachedAvatar }
+            : user;
+
+        setMe(patchedUser);
+        setCtxUser?.(patchedUser);
+
+        setUsername(user?.username || "");
+        setFullName(user?.fullName || user?.name || user?.username || "");
+        setEmail(user?.email || "");
+        setSelectedRole(normalizeRole(user?.role) || "BUYER");
+
+        if (userId && user?.avatarUrl) {
+          try {
+            localStorage.setItem(LS_AVATAR_KEY(userId), user.avatarUrl);
+          } catch (error) {
+            console.log("LS_WRITE_AVATAR_ERR", error);
+          }
+
+          setPersistedAvatarUrl(user.avatarUrl);
+        } else if (cachedAvatar) {
+          setPersistedAvatarUrl(cachedAvatar);
+        }
+      } catch (error) {
+        console.log("GET_ME_ERR", error?.response?.data || error?.message);
+      } finally {
+        if (!alive) return;
+        setLoading(false);
+      }
+    }
+
+    run();
+
+    return () => {
+      alive = false;
+    };
+  }, [setCtxUser]);
 
   useEffect(() => {
     return () => {
@@ -210,7 +220,7 @@ export function MyProfile() {
     };
   }, [avatarPreview]);
 
-  function clearSecurityMessages() {
+  function clearPasswordMessages() {
     setPasswordErr("");
     setPasswordSuccess("");
   }
@@ -220,95 +230,67 @@ export function MyProfile() {
     setForgotSuccess("");
   }
 
-  function resetSecurityForm() {
+  function resetPasswordForm() {
     setCurrentPassword("");
     setNewPassword("");
     setConfirmNewPassword("");
-    setShowCurrentPass(false);
-    setShowNewPass(false);
-    setShowConfirmPass(false);
   }
 
   async function saveProfile() {
     try {
-      setSaving(true);
-      const r = await updateMeRequest({ username });
-      const u = r.data?.user ?? r.data ?? null;
+      setSavingProfile(true);
 
-      setMe(u);
-      setCtxUser?.(u);
+      const response = await updateMeRequest({
+        username,
+        fullName,
+        email,
+      });
 
-      const userId = u?._id || u?.id;
-      if (userId && u?.avatarUrl) {
-        try {
-          localStorage.setItem(LS_AVATAR_KEY(userId), u.avatarUrl);
-        } catch (e) {
-          console.log("LS_WRITE_AVATAR_ERR", e);
-        }
-        setPersistedAvatarUrl(u.avatarUrl);
-      }
-    } catch (err) {
-      console.log("SAVE_PROFILE_ERR", err?.response?.data || err?.message);
+      const updatedUser = response.data?.user ?? response.data ?? null;
+
+      const mergedUser = updatedUser
+        ? {
+            ...updatedUser,
+            avatarUrl: updatedUser.avatarUrl || persistedAvatarUrl,
+          }
+        : displayUser;
+
+      setMe(mergedUser);
+      setCtxUser?.(mergedUser);
+    } catch (error) {
+      console.log("SAVE_PROFILE_ERR", error?.response?.data || error?.message);
     } finally {
-      setSaving(false);
+      setSavingProfile(false);
     }
   }
 
-  async function switchRole(nextRole) {
+  async function saveRole() {
     try {
-      setSwitching(true);
+      setSwitchingRole(true);
 
-      const r = await updateRoleRequest(nextRole);
-      const u = r.data?.user ?? null;
+      const response = await updateRoleRequest(selectedRole);
+      const updatedUser = response.data?.user ?? null;
 
-      const accessToken = r.data?.accessToken;
+      const accessToken = response.data?.accessToken;
+
       if (accessToken) {
         const { setAccessToken } = await import("@/libs/token.js");
         setAccessToken(accessToken);
       }
 
-      const merged = u ? { ...u, avatarUrl: u.avatarUrl || persistedAvatarUrl } : u;
+      const mergedUser = updatedUser
+        ? {
+            ...updatedUser,
+            avatarUrl: updatedUser.avatarUrl || persistedAvatarUrl,
+          }
+        : displayUser;
 
-      setMe(merged);
-      setCtxUser?.(merged);
-
-      const userId = merged?._id || merged?.id;
-      if (userId && merged?.avatarUrl) {
-        try {
-          localStorage.setItem(LS_AVATAR_KEY(userId), merged.avatarUrl);
-        } catch (e) {
-          console.log("LS_WRITE_AVATAR_ERR", e);
-        }
-        setPersistedAvatarUrl(merged.avatarUrl);
-      }
-    } catch (err) {
-      console.log("SWITCH_ROLE_ERR", err?.response?.data || err?.message);
+      setMe(mergedUser);
+      setCtxUser?.(mergedUser);
+    } catch (error) {
+      console.log("SWITCH_ROLE_ERR", error?.response?.data || error?.message);
     } finally {
-      setSwitching(false);
-    }
-  }
-
-  async function confirmDelete() {
-    if (!canDelete) return;
-
-    try {
-      const userId = displayUser?._id || displayUser?.id;
-      if (userId) {
-        try {
-          localStorage.removeItem(LS_AVATAR_KEY(userId));
-        } catch (e) {
-          console.log("LS_REMOVE_AVATAR_ERR", e);
-        }
-      }
-
-      await deleteMeRequest();
-      await logout?.();
-      nav("/start");
-    } catch (err) {
-      console.log("DELETE_ME_ERR", err?.response?.data || err?.message);
-    } finally {
-      setDeleteOpen(false);
-      setDeleteWord("");
+      setSwitchingRole(false);
     }
   }
 
@@ -316,78 +298,62 @@ export function MyProfile() {
     try {
       await resendVerificationRequest(displayUser?.email);
       window.open("/verify-email", "_blank", "noopener,noreferrer");
-    } catch (err) {
-      console.log("RESEND_VERIFICATION_ERR", err?.response?.data || err?.message);
-    }
-  }
-
-  async function handleChangePassword(e) {
-    e.preventDefault();
-
-    if (!passwordsMatch) {
-      setPasswordErr("New passwords do not match.");
-      setPasswordSuccess("");
-      return;
-    }
-
-    try {
-      setPasswordSaving(true);
-      clearSecurityMessages();
-      clearForgotMessages();
-
-      await changePasswordRequest({
-        currentPassword,
-        newPassword,
-      });
-
-      setPasswordSuccess("Password updated successfully.");
-      resetSecurityForm();
-    } catch (err) {
-      setPasswordErr(
-        err?.response?.data?.message || "Could not update password."
+    } catch (error) {
+      console.log(
+        "RESEND_VERIFICATION_ERR",
+        error?.response?.data || error?.message
       );
-      setPasswordSuccess("");
-      console.log("CHANGE_PASSWORD_ERR", err?.response?.data || err?.message);
-    } finally {
-      setPasswordSaving(false);
     }
   }
 
-  async function handleSetPassword(e) {
-    e.preventDefault();
+  async function handlePasswordSubmit(event) {
+    event.preventDefault();
 
     if (!passwordsMatch) {
-      setPasswordErr("Passwords do not match.");
+      setPasswordErr("Las contraseñas nuevas no coinciden.");
       setPasswordSuccess("");
       return;
     }
 
     try {
       setPasswordSaving(true);
-      clearSecurityMessages();
+      clearPasswordMessages();
       clearForgotMessages();
 
-      await setPasswordRequest({
-        newPassword,
-      });
+      if (displayUser?.hasPassword) {
+        await changePasswordRequest({
+          currentPassword,
+          newPassword,
+        });
 
-      const nextUser = displayUser
-        ? { ...displayUser, hasPassword: true }
-        : displayUser;
+        setPasswordSuccess("Contraseña actualizada correctamente.");
+      } else {
+        await setPasswordRequest({
+          newPassword,
+        });
 
-      if (nextUser) {
-        setMe(nextUser);
-        setCtxUser?.(nextUser);
+        const nextUser = displayUser
+          ? {
+              ...displayUser,
+              hasPassword: true,
+            }
+          : displayUser;
+
+        if (nextUser) {
+          setMe(nextUser);
+          setCtxUser?.(nextUser);
+        }
+
+        setPasswordSuccess("Contraseña creada correctamente.");
       }
 
-      setPasswordSuccess("Password created successfully.");
-      resetSecurityForm();
-    } catch (err) {
+      resetPasswordForm();
+    } catch (error) {
       setPasswordErr(
-        err?.response?.data?.message || "Could not create password."
+        error?.response?.data?.message || "No se pudo actualizar la contraseña."
       );
       setPasswordSuccess("");
-      console.log("SET_PASSWORD_ERR", err?.response?.data || err?.message);
+      console.log("PASSWORD_ERR", error?.response?.data || error?.message);
     } finally {
       setPasswordSaving(false);
     }
@@ -397,19 +363,17 @@ export function MyProfile() {
     try {
       setForgotSending(true);
       clearForgotMessages();
-      clearSecurityMessages();
+      clearPasswordMessages();
 
       await forgotPasswordRequest(displayUser?.email);
 
-      setForgotSuccess("We sent a password reset link to your email.");
-    } catch (err) {
+      setForgotSuccess("Te enviamos un link de recuperación a tu email.");
+    } catch (error) {
       setForgotErr(
-        err?.response?.data?.message || "Could not send reset email."
+        error?.response?.data?.message ||
+          "No se pudo enviar el email de recuperación."
       );
-      console.log(
-        "FORGOT_PASSWORD_FROM_PROFILE_ERR",
-        err?.response?.data || err?.message
-      );
+      console.log("FORGOT_PASSWORD_ERR", error?.response?.data || error?.message);
     } finally {
       setForgotSending(false);
     }
@@ -419,11 +383,12 @@ export function MyProfile() {
     if (!file) return;
 
     if (!file.type?.startsWith("image/")) {
-      setAvatarErr("Please select an image file (PNG/JPG/WebP).");
+      setAvatarErr("Seleccioná una imagen válida.");
       return;
     }
+
     if (file.size > 4 * 1024 * 1024) {
-      setAvatarErr("Image is too large. Max 4MB.");
+      setAvatarErr("La imagen es demasiado pesada. Máximo 4MB.");
       return;
     }
 
@@ -433,21 +398,24 @@ export function MyProfile() {
     if (avatarPreview?.startsWith("blob:")) {
       URL.revokeObjectURL(avatarPreview);
     }
+
     setAvatarPreview(URL.createObjectURL(file));
   }
 
   function clearAvatarPick() {
     setAvatarFile(null);
     setAvatarErr("");
+
     if (avatarPreview?.startsWith("blob:")) {
       URL.revokeObjectURL(avatarPreview);
     }
+
     setAvatarPreview("");
   }
 
   async function uploadAvatar() {
     if (!avatarFile) {
-      setAvatarErr("Choose an image first.");
+      setAvatarErr("Elegí una imagen primero.");
       return;
     }
 
@@ -455,32 +423,33 @@ export function MyProfile() {
       setAvatarUploading(true);
       setAvatarErr("");
 
-      const r = await uploadMyAvatarRequest(avatarFile);
+      const response = await uploadMyAvatarRequest(avatarFile);
 
-      const u = r.data?.user ?? null;
-      const avatarUrlFromApi = r.data?.avatarUrl;
+      const updatedUser = response.data?.user ?? null;
+      const avatarUrlFromApi = response.data?.avatarUrl;
 
-      const nextUser = u
-        ? u
+      const nextUser = updatedUser
+        ? updatedUser
         : displayUser
-        ? {
-            ...displayUser,
-            avatarUrl: avatarUrlFromApi || displayUser.avatarUrl,
-          }
-        : null;
+          ? {
+              ...displayUser,
+              avatarUrl: avatarUrlFromApi || displayUser.avatarUrl,
+            }
+          : null;
 
       if (nextUser?.avatarUrl) {
         const userId = nextUser?._id || nextUser?.id;
+
         if (userId) {
           try {
             localStorage.setItem(LS_AVATAR_KEY(userId), nextUser.avatarUrl);
-          } catch (e) {
-            console.log("LS_WRITE_AVATAR_ERR", e);
+          } catch (error) {
+            console.log("LS_WRITE_AVATAR_ERR", error);
           }
         }
 
         setPersistedAvatarUrl(nextUser.avatarUrl);
-        setAvatarV((x) => x + 1);
+        setAvatarV((value) => value + 1);
       }
 
       if (nextUser) {
@@ -490,871 +459,778 @@ export function MyProfile() {
 
       setAvatarOpen(false);
       clearAvatarPick();
-    } catch (err) {
-      setAvatarErr(err?.response?.data?.message || "Could not upload avatar.");
-      console.log("UPLOAD_AVATAR_ERR", err?.response?.data || err?.message);
+    } catch (error) {
+      setAvatarErr(error?.response?.data?.message || "No se pudo subir la foto.");
+      console.log("UPLOAD_AVATAR_ERR", error?.response?.data || error?.message);
     } finally {
       setAvatarUploading(false);
     }
   }
 
+  async function confirmDelete() {
+    if (!canDelete) return;
+
+    try {
+      const userId = displayUser?._id || displayUser?.id;
+
+      if (userId) {
+        try {
+          localStorage.removeItem(LS_AVATAR_KEY(userId));
+        } catch (error) {
+          console.log("LS_REMOVE_AVATAR_ERR", error);
+        }
+      }
+
+      await deleteMeRequest();
+      await logout?.();
+
+      navigate("/start");
+    } catch (error) {
+      console.log("DELETE_ME_ERR", error?.response?.data || error?.message);
+    } finally {
+      setDeleteOpen(false);
+      setDeleteWord("");
+    }
+  }
+
   if (loading) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-10">
-        <Card className="border-white/10 bg-white/5">
-          <CardContent className="p-6">
-            <div className="h-8 w-56 animate-pulse rounded bg-white/10" />
+      <div className="ticketify-profile bg-[#f3faff] text-[#001f29]">
+        <ProfileStyles />
+
+        <main className="tf-container py-10">
+          <div className="profile-shadow rounded-xl border border-[#d8f2ff] bg-white p-6">
+            <div className="h-8 w-56 animate-pulse rounded bg-[#d8f2ff]" />
+
             <div className="mt-6 grid gap-6 md:grid-cols-[320px_1fr]">
-              <div className="h-80 animate-pulse rounded-3xl bg-white/10" />
-              <div className="h-80 animate-pulse rounded-3xl bg-white/10" />
+              <div className="h-80 animate-pulse rounded-xl bg-[#d8f2ff]" />
+              <div className="h-80 animate-pulse rounded-xl bg-[#d8f2ff]" />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </main>
       </div>
     );
   }
 
-  const avatarSrc = displayUser?.avatarUrl
-    ? `${displayUser.avatarUrl}${
-        displayUser.avatarUrl.includes("?") ? "&" : "?"
-      }v=${avatarV}`
-    : "";
-
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-5xl font-extrabold tracking-tight md:text-6xl">
-            MY PROFILE
-          </h1>
-          <p className="mt-3 text-white/60">
-            Manage your futuristic ticketing identity and permissions.
-          </p>
-        </div>
-      </div>
+    <div className="ticketify-profile bg-[#f3faff] text-[#001f29]">
+      <ProfileStyles />
 
-      <div className="mt-8 grid gap-6 md:grid-cols-[320px_1fr]">
-        {/* LEFT PANEL */}
-        <Card className="border-white/10 bg-white/5">
-          <CardContent className="p-6">
-            <div className="grid place-items-center">
-              <div className="relative grid h-28 w-28 place-items-center overflow-hidden rounded-full bg-violet-600/20 ring-1 ring-violet-500/30">
-                {avatarSrc ? (
-                  <img
-                    src={avatarSrc}
-                    alt="Avatar"
-                    className="h-full w-full object-cover"
-                    onError={() => setAvatarV((x) => x + 1)}
-                  />
-                ) : (
-                  <div className="text-3xl font-extrabold text-violet-200">
-                    {initials(displayUser?.username || displayUser?.email || "")}
+      <main className="tf-container py-8 md:py-10">
+        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-12">
+          <aside className="space-y-6 md:col-span-4 lg:col-span-4 xl:col-span-4">
+            <section className="profile-shadow fade-in-up rounded-lg border border-[#e4bdbc] bg-white p-6">
+              <div className="flex flex-col items-center text-center">
+                <div className="group relative mb-4">
+                  <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border-4 border-[#d8f2ff] bg-[#e5f6ff] shadow-lg">
+                    {avatarSrc ? (
+                      <img
+                        src={avatarSrc}
+                        alt="Avatar"
+                        className="h-full w-full object-cover"
+                        onError={() => setAvatarV((value) => value + 1)}
+                      />
+                    ) : (
+                      <span className="text-3xl font-extrabold text-[#215d7d]">
+                        {initials(
+                          displayUser?.username || displayUser?.email || ""
+                        )}
+                      </span>
+                    )}
                   </div>
-                )}
-              </div>
 
-              <div className="mt-4 text-xl font-semibold">
-                {displayUser?.username || "—"}
-              </div>
-              <div className="mt-1 text-sm text-white/60">
-                {displayUser?.email || "—"}
-              </div>
-
-              <Button
-                className="mt-5 w-full rounded-2xl bg-violet-600 hover:bg-violet-500"
-                onClick={() => {
-                  setAvatarErr("");
-                  setAvatarOpen(true);
-                }}
-              >
-                Upload Photo
-              </Button>
-
-              <div className="mt-4 grid w-full gap-2">
-                <div
-                  className={[
-                    "flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm",
-                    verifiedBadge(!!displayUser?.emailVerified),
-                  ].join(" ")}
-                >
-                  {displayUser?.emailVerified ? (
-                    <CheckCircle2 className="h-4 w-4" />
-                  ) : (
-                    <AlertTriangle className="h-4 w-4" />
-                  )}
-                  {displayUser?.emailVerified
-                    ? "Email Verified"
-                    : "Email Not Verified"}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAvatarErr("");
+                      setAvatarOpen(true);
+                    }}
+                    className="absolute bottom-0 right-0 rounded-full bg-[#b20024] p-2 text-white shadow-md transition-transform hover:scale-105"
+                    aria-label="Editar foto"
+                  >
+                    <span className="material-symbols-outlined text-sm">
+                      edit
+                    </span>
+                  </button>
                 </div>
 
-                <div
-                  className={[
-                    "flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm",
-                    roleBadge(displayUser?.role),
-                  ].join(" ")}
-                >
-                  <Shield className="h-4 w-4" />
-                  Role: {displayUser?.role || "—"}
-                </div>
+                <h1 className="text-[24px] font-bold leading-8 text-[#001f29]">
+                  {displayUser?.fullName ||
+                    displayUser?.name ||
+                    displayUser?.username ||
+                    "Usuario"}
+                </h1>
+
+                <p className="mb-6 text-[16px] leading-6 text-[#5b403f]">
+                  {normalizeRole(displayUser?.role) === "ORGANIZER"
+                    ? "Vendedor"
+                    : "Comprador"}
+                </p>
 
                 {!displayUser?.emailVerified ? (
-                  <Button
-                    variant="outline"
-                    className="mt-1 w-full rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                    onClick={resendVerification}
-                  >
-                    Resend verification email
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+                  <div className="animate-pulse-subtle mb-6 w-full rounded-lg border border-[#ba1a1a]/20 bg-[#ffdad6] p-4">
+                    <p className="mb-3 text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#93000a]">
+                      Verificá tu email para proteger tu cuenta
+                    </p>
 
-        {/* RIGHT COLUMN */}
-        <div className="space-y-6">
-          {/* Personal info */}
-          <Card className="border-white/10 bg-white/5">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="h-6 w-1 rounded-full bg-violet-600" />
-                <h2 className="text-lg font-semibold">Personal Information</h2>
+                    <button
+                      type="button"
+                      onClick={resendVerification}
+                      className="w-full rounded-md bg-[#d62839] py-2 text-[14px] font-bold leading-5 tracking-[0.05em] text-white transition-all hover:shadow-lg active:scale-95"
+                    >
+                      Verificar email
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mb-6 w-full rounded-lg border border-green-200 bg-green-100 p-4">
+                    <p className="text-[14px] font-semibold leading-5 tracking-[0.05em] text-green-700">
+                      Email verificado
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAvatarErr("");
+                    setAvatarOpen(true);
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-md border border-[#215d7d] py-2 text-[14px] font-bold leading-5 tracking-[0.05em] text-[#215d7d] transition-colors hover:bg-[#e5f6ff]"
+                >
+                  <span className="material-symbols-outlined text-base">
+                    photo_camera
+                  </span>
+                  Cambiar foto
+                </button>
+              </div>
+            </section>
+
+            <section className="rounded-lg bg-[#3e7697] p-6 text-white">
+              <div className="mb-4 flex items-center gap-3">
+                <span className="material-symbols-outlined">verified_user</span>
+                <h3 className="text-[20px] font-bold leading-6">
+                  Nivel de Seguridad
+                </h3>
               </div>
 
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label className="text-white/70">Username</Label>
-                  <Input
-                    className="h-12 rounded-2xl border-white/10 bg-white/5 text-white placeholder:text-white/30"
+              <div className="mb-2 h-2 w-full rounded-full bg-[#d8f2ff]/30">
+                <div
+                  className="h-full rounded-full bg-[#eef6ff]"
+                  style={{ width: `${securityLevel}%` }}
+                />
+              </div>
+
+              <p className="text-[14px] font-semibold leading-5 tracking-[0.05em] opacity-90">
+                Tu perfil está completo al {securityLevel}%. ¡Casi listo!
+              </p>
+            </section>
+          </aside>
+
+          <div className="fade-in-up space-y-8 md:col-span-8 lg:col-span-8 xl:col-span-8">
+            <SectionCard icon="person" title="Información personal">
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <InputField
+                    label="Nombre de usuario"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Your username"
+                    onChange={setUsername}
+                    placeholder="tu_usuario"
+                  />
+
+                  <InputField
+                    label="Nombre completo"
+                    value={fullName}
+                    onChange={setFullName}
+                    placeholder="Tu nombre"
+                  />
+
+                  <div className="md:col-span-2">
+                    <InputField
+                      label="Correo electrónico"
+                      type="email"
+                      value={email}
+                      onChange={setEmail}
+                      placeholder="tu@email.com"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-[#e4bdbc] pt-4">
+                  <button
+                    type="button"
+                    onClick={saveProfile}
+                    disabled={savingProfile}
+                    className="rounded-lg bg-[#b20024] px-6 py-3 text-[14px] font-bold leading-5 tracking-[0.05em] text-white transition-all hover:shadow-xl active:scale-95 disabled:opacity-60"
+                  >
+                    {savingProfile ? "Guardando..." : "Guardar cambios"}
+                  </button>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard icon="lock" title="Seguridad">
+              <form onSubmit={handlePasswordSubmit} className="space-y-6">
+                <div className="grid max-w-md grid-cols-1 gap-4">
+                  {displayUser?.hasPassword ? (
+                    <input
+                      className="h-12 w-full rounded-lg border border-[#e4bdbc] bg-[#f3faff] px-4 text-[#001f29] outline-none focus:border-[#215d7d] focus:ring-1 focus:ring-[#215d7d]"
+                      placeholder="Contraseña actual"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(event) => {
+                        setCurrentPassword(event.target.value);
+                        clearPasswordMessages();
+                      }}
+                      autoComplete="current-password"
+                    />
+                  ) : null}
+
+                  <input
+                    className="h-12 w-full rounded-lg border border-[#e4bdbc] bg-[#f3faff] px-4 text-[#001f29] outline-none focus:border-[#215d7d] focus:ring-1 focus:ring-[#215d7d]"
+                    placeholder="Nueva contraseña"
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => {
+                      setNewPassword(event.target.value);
+                      clearPasswordMessages();
+                    }}
+                    autoComplete="new-password"
+                  />
+
+                  <input
+                    className="h-12 w-full rounded-lg border border-[#e4bdbc] bg-[#f3faff] px-4 text-[#001f29] outline-none focus:border-[#215d7d] focus:ring-1 focus:ring-[#215d7d]"
+                    placeholder="Confirmar nueva contraseña"
+                    type="password"
+                    value={confirmNewPassword}
+                    onChange={(event) => {
+                      setConfirmNewPassword(event.target.value);
+                      clearPasswordMessages();
+                    }}
+                    autoComplete="new-password"
                   />
                 </div>
 
-                <div className="grid gap-2">
-                  <Label className="text-white/70">Email Address</Label>
-                  <div className="relative">
-                    <Input
-                      className="h-12 rounded-2xl border-white/10 bg-white/5 text-white/70"
-                      value={displayUser?.email || ""}
-                      disabled
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      {displayUser?.emailVerified ? (
-                        <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                      ) : (
-                        <AlertTriangle className="h-5 w-5 text-amber-400" />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-end">
-                <Button
-                  className="rounded-2xl bg-violet-600 hover:bg-violet-500"
-                  onClick={saveProfile}
-                  disabled={saving}
-                >
-                  {saving ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Security */}
-          <Card className="border-white/10 bg-white/5">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="h-6 w-1 rounded-full bg-violet-600" />
-                <h2 className="text-lg font-semibold">Security</h2>
-              </div>
-
-              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-10 w-10 place-items-center rounded-2xl bg-violet-600/15 ring-1 ring-violet-500/30">
-                    <KeyRound className="h-5 w-5 text-violet-300" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold">
-                      {displayUser?.hasPassword ? "Change Password" : "Set Password"}
-                    </div>
-                    <div className="mt-1 text-sm text-white/60">
-                      {displayUser?.hasPassword
-                        ? "Update your current password to keep your account secure."
-                        : "Your account was created with Google. Create a local password if you want to log in without Google too."}
-                    </div>
-                  </div>
-                </div>
-
-                {displayUser?.hasPassword ? (
-                  <>
-                    <form
-                      onSubmit={handleChangePassword}
-                      className="mt-5 grid gap-4"
-                    >
-                      <div className="grid gap-2">
-                        <Label className="text-white/70">Current Password</Label>
-                        <div className="relative">
-                          <Input
-                            type={showCurrentPass ? "text" : "password"}
-                            className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
-                            value={currentPassword}
-                            onChange={(e) => {
-                              setCurrentPassword(e.target.value);
-                              clearSecurityMessages();
-                            }}
-                            placeholder="Enter your current password"
-                            autoComplete="current-password"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowCurrentPass((v) => !v)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
-                          >
-                            {showCurrentPass ? (
-                              <EyeOff className="h-5 w-5" />
-                            ) : (
-                              <Eye className="h-5 w-5" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="grid gap-2">
-                          <Label className="text-white/70">New Password</Label>
-                          <div className="relative">
-                            <Input
-                              type={showNewPass ? "text" : "password"}
-                              className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
-                              value={newPassword}
-                              onChange={(e) => {
-                                setNewPassword(e.target.value);
-                                clearSecurityMessages();
-                              }}
-                              placeholder="Create a new password"
-                              autoComplete="new-password"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowNewPass((v) => !v)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
-                            >
-                              {showNewPass ? (
-                                <EyeOff className="h-5 w-5" />
-                              ) : (
-                                <Eye className="h-5 w-5" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-2">
-                          <Label className="text-white/70">
-                            Confirm New Password
-                          </Label>
-                          <div className="relative">
-                            <Input
-                              type={showConfirmPass ? "text" : "password"}
-                              className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
-                              value={confirmNewPassword}
-                              onChange={(e) => {
-                                setConfirmNewPassword(e.target.value);
-                                clearSecurityMessages();
-                              }}
-                              placeholder="Repeat your new password"
-                              autoComplete="new-password"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowConfirmPass((v) => !v)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
-                            >
-                              {showConfirmPass ? (
-                                <EyeOff className="h-5 w-5" />
-                              ) : (
-                                <Eye className="h-5 w-5" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {confirmNewPassword && !passwordsMatch ? (
-                        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                          New passwords do not match.
-                        </div>
-                      ) : null}
-
-                      {passwordErr ? (
-                        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                          {passwordErr}
-                        </div>
-                      ) : null}
-
-                      {passwordSuccess ? (
-                        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-                          {passwordSuccess}
-                        </div>
-                      ) : null}
-
-                      <div className="flex justify-end">
-                        <Button
-                          type="submit"
-                          className="rounded-2xl bg-violet-600 hover:bg-violet-500"
-                          disabled={passwordSaving || !canChangePassword}
-                        >
-                          {passwordSaving ? "Updating..." : "Update Password"}
-                        </Button>
-                      </div>
-                    </form>
-
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <div className="text-sm font-semibold text-white">
-                        Forgot your current password?
-                      </div>
-                      <div className="mt-1 text-sm text-white/60">
-                        We can send a secure reset link to{" "}
-                        <span className="text-white/80">{displayUser?.email}</span>.
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap gap-3">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                          onClick={handleForgotPassword}
-                          disabled={forgotSending}
-                        >
-                          {forgotSending ? "Sending..." : "Send Reset Link"}
-                        </Button>
-                      </div>
-
-                      {forgotErr ? (
-                        <div className="mt-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                          {forgotErr}
-                        </div>
-                      ) : null}
-
-                      {forgotSuccess ? (
-                        <div className="mt-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-                          {forgotSuccess}
-                        </div>
-                      ) : null}
-                    </div>
-                  </>
-                ) : (
-                  <form onSubmit={handleSetPassword} className="mt-5 grid gap-4">
-                    <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 px-4 py-3 text-sm text-violet-100">
-                      You currently sign in with Google only. Setting a password
-                      will also let you log in with email and password.
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="grid gap-2">
-                        <Label className="text-white/70">New Password</Label>
-                        <div className="relative">
-                          <Input
-                            type={showNewPass ? "text" : "password"}
-                            className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
-                            value={newPassword}
-                            onChange={(e) => {
-                              setNewPassword(e.target.value);
-                              clearSecurityMessages();
-                            }}
-                            placeholder="Create a password"
-                            autoComplete="new-password"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowNewPass((v) => !v)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
-                          >
-                            {showNewPass ? (
-                              <EyeOff className="h-5 w-5" />
-                            ) : (
-                              <Eye className="h-5 w-5" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-2">
-                        <Label className="text-white/70">
-                          Confirm New Password
-                        </Label>
-                        <div className="relative">
-                          <Input
-                            type={showConfirmPass ? "text" : "password"}
-                            className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
-                            value={confirmNewPassword}
-                            onChange={(e) => {
-                              setConfirmNewPassword(e.target.value);
-                              clearSecurityMessages();
-                            }}
-                            placeholder="Repeat your password"
-                            autoComplete="new-password"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowConfirmPass((v) => !v)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
-                          >
-                            {showConfirmPass ? (
-                              <EyeOff className="h-5 w-5" />
-                            ) : (
-                              <Eye className="h-5 w-5" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {confirmNewPassword && !passwordsMatch ? (
-                      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                        Passwords do not match.
-                      </div>
-                    ) : null}
-
-                    {passwordErr ? (
-                      <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                        {passwordErr}
-                      </div>
-                    ) : null}
-
-                    {passwordSuccess ? (
-                      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-                        {passwordSuccess}
-                      </div>
-                    ) : null}
-
-                    <div className="flex justify-end">
-                      <Button
-                        type="submit"
-                        className="rounded-2xl bg-violet-600 hover:bg-violet-500"
-                        disabled={passwordSaving || !canSetPassword}
-                      >
-                        {passwordSaving ? "Saving..." : "Set Password"}
-                      </Button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Role management */}
-          <Card className="border-white/10 bg-white/5">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="h-6 w-1 rounded-full bg-violet-600" />
-                <h2 className="text-lg font-semibold">Role Management</h2>
-              </div>
-
-              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5">
-                <div className="text-sm font-semibold">
-                  Switch to Organizer Mode
-                </div>
-                <div className="mt-2 text-sm text-white/60">
-                  Upgrade your account to create events, manage sales, and track
-                  ticket redemptions.
-                </div>
-
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <div className="text-xs text-white/50">
-                    Current:{" "}
-                    <span className="text-white/80">{displayUser?.role}</span>
-                  </div>
-
-                  <div className="flex items-center rounded-2xl border border-white/10 bg-black/30 p-1">
-                    <button
-                      className={[
-                        "px-4 py-2 text-sm rounded-xl transition",
-                        displayUser?.role === "BUYER"
-                          ? "bg-violet-600 text-white"
-                          : "text-white/60 hover:text-white",
-                      ].join(" ")}
-                      onClick={() => switchRole("BUYER")}
-                      disabled={switching}
-                      type="button"
-                    >
-                      Buyer
-                    </button>
-                    <button
-                      className={[
-                        "px-4 py-2 text-sm rounded-xl transition",
-                        displayUser?.role === "ORGANIZER"
-                          ? "bg-violet-600 text-white"
-                          : "text-white/60 hover:text-white",
-                      ].join(" ")}
-                      onClick={() => switchRole("ORGANIZER")}
-                      disabled={switching}
-                      type="button"
-                    >
-                      Organizer
-                    </button>
-                  </div>
-                </div>
-
-                {switching ? (
-                  <div className="mt-3 text-xs text-white/50">
-                    Updating role…
-                  </div>
+                {confirmNewPassword && !passwordsMatch ? (
+                  <AlertBox type="warning">
+                    Las contraseñas nuevas no coinciden.
+                  </AlertBox>
                 ) : null}
-              </div>
-            </CardContent>
-          </Card>
-          {/* Payments */}
-          <Card className="border-white/10 bg-white/5">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="h-6 w-1 rounded-full bg-violet-600" />
-                <h2 className="text-lg font-semibold">Payments</h2>
+
+                {passwordErr ? (
+                  <AlertBox type="error">{passwordErr}</AlertBox>
+                ) : null}
+
+                {passwordSuccess ? (
+                  <AlertBox type="success">{passwordSuccess}</AlertBox>
+                ) : null}
+
+                {forgotErr ? <AlertBox type="error">{forgotErr}</AlertBox> : null}
+
+                {forgotSuccess ? (
+                  <AlertBox type="success">{forgotSuccess}</AlertBox>
+                ) : null}
+
+                <div className="flex flex-col items-start gap-4 pt-4 md:flex-row md:items-center">
+                  <button
+                    type="submit"
+                    disabled={
+                      passwordSaving ||
+                      (displayUser?.hasPassword
+                        ? !canChangePassword
+                        : !canSetPassword)
+                    }
+                    className="rounded-lg bg-[#215d7d] px-6 py-3 text-[14px] font-bold leading-5 tracking-[0.05em] text-white transition-all hover:opacity-90 disabled:opacity-60"
+                  >
+                    {passwordSaving
+                      ? "Actualizando..."
+                      : displayUser?.hasPassword
+                        ? "Actualizar contraseña"
+                        : "Crear contraseña"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    disabled={forgotSending}
+                    className="text-[14px] font-bold leading-5 tracking-[0.05em] text-[#b20024] transition-colors hover:underline disabled:opacity-60"
+                  >
+                    {forgotSending
+                      ? "Enviando..."
+                      : "¿Olvidaste tu contraseña?"}
+                  </button>
+                </div>
+              </form>
+            </SectionCard>
+
+            <SectionCard icon="badge" title="Rol de cuenta">
+              <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <RoleOption
+                  active={selectedRole === "BUYER"}
+                  icon="shopping_cart"
+                  title="Comprador"
+                  text="Acceso ilimitado a compra de eventos, preventas exclusivas y historial de pedidos."
+                  onClick={() => setSelectedRole("BUYER")}
+                />
+
+                <RoleOption
+                  active={selectedRole === "ORGANIZER"}
+                  icon="sell"
+                  title="Vendedor"
+                  text="Publicá tus entradas, gestioná ventas y recibí pagos de forma segura en tu billetera."
+                  onClick={() => setSelectedRole("ORGANIZER")}
+                />
               </div>
 
-              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5">
-                {mpLoading ? (
-                  <div className="text-sm text-white/50">Checking Mercado Pago...</div>
-                ) : connected ? (
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-emerald-300">
-                      Mercado Pago connected ✅
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm text-amber-300">
-                      Connect Mercado Pago to receive payments
-                    </div>
+              <button
+                type="button"
+                onClick={saveRole}
+                disabled={switchingRole}
+                className="rounded-lg bg-[#001f29] px-6 py-3 text-[14px] font-bold leading-5 tracking-[0.05em] text-[#f3faff] transition-all hover:bg-[#5b403f] disabled:opacity-60"
+              >
+                {switchingRole ? "Guardando..." : "Guardar rol"}
+              </button>
+            </SectionCard>
 
-                    <Button
-                      className="rounded-2xl bg-violet-600 hover:bg-violet-500"
+            <SectionCard icon="payments" title="Mercado Pago" titleColor="#009EE3">
+              <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
+                <div className="flex-1">
+                  {mpLoading ? (
+                    <span className="mb-4 inline-flex rounded bg-[#e5f6ff] px-2 py-1 text-[14px] font-bold leading-5 tracking-[0.05em] text-[#215d7d]">
+                      Verificando conexión...
+                    </span>
+                  ) : connected ? (
+                    <span className="mb-4 inline-flex rounded bg-green-100 px-2 py-1 text-[14px] font-bold leading-5 tracking-[0.05em] text-green-700">
+                      Conectado
+                    </span>
+                  ) : (
+                    <span className="mb-4 inline-flex rounded bg-[#ba1a1a]/10 px-2 py-1 text-[14px] font-bold leading-5 tracking-[0.05em] text-[#ba1a1a]">
+                      No conectado
+                    </span>
+                  )}
+
+                  <p className="mb-6 text-[16px] leading-6 text-[#5b403f]">
+                    Conecta tu cuenta de Mercado Pago para procesar pagos de forma segura si decides vender tus entradas.
+                  </p>
+
+                  {!connected ? (
+                    <button
+                      type="button"
                       onClick={connect}
+                      disabled={mpLoading}
+                      className="flex items-center gap-2 rounded-lg bg-[#009EE3] px-6 py-3 text-[14px] font-bold leading-5 tracking-[0.05em] text-white transition-all hover:opacity-90 disabled:opacity-60"
                     >
-                      Connect
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          {/* Activity */}
-          <Card className="border-white/10 bg-white/5">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="h-6 w-1 rounded-full bg-violet-600" />
-                <h2 className="text-lg font-semibold">Account Activity</h2>
-              </div>
+                      <span className="material-symbols-outlined">link</span>
+                      Conectar Mercado Pago
+                    </button>
+                  ) : null}
+                </div>
 
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-[10px] uppercase tracking-widest text-white/45">
-                    Created At
-                  </div>
-                  <div className="mt-2 text-sm text-white/85">
+                <div className="hidden w-48 opacity-20 lg:block">
+                  <span className="material-symbols-outlined text-[160px]">
+                    account_balance_wallet
+                  </span>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard icon="history" title="Actividad de la cuenta">
+              <div className="space-y-4">
+                <div className="flex justify-between border-b border-[#e4bdbc] py-3">
+                  <span className="font-bold text-[#5b403f]">
+                    Miembro desde
+                  </span>
+
+                  <span className="text-[#001f29]">
                     {formatDate(displayUser?.createdAt)}
-                  </div>
-                  <div className="mt-1 text-xs text-white/45">
-                    Last login: {formatDateTime(displayUser?.lastLoginAt)}
-                  </div>
+                  </span>
+                </div>
+
+                <div className="flex justify-between py-3">
+                  <span className="font-bold text-[#5b403f]">
+                    Último inicio de sesión
+                  </span>
+
+                  <span className="text-[#001f29]">
+                    {formatDateTime(displayUser?.lastLoginAt)}
+                  </span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </SectionCard>
 
-          {/* Danger zone */}
-          <Card className="border-red-500/15 bg-red-500/5">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 text-red-200">
-                <div className="grid h-8 w-8 place-items-center rounded-xl bg-red-500/10 ring-1 ring-red-500/20">
-                  <AlertTriangle className="h-4 w-4" />
-                </div>
-                <div>
-                  <div className="text-lg font-semibold">Danger Zone</div>
-                  <div className="text-sm text-red-200/60">
-                    Once you delete your account, there is no going back. All
-                    your active tickets and purchase history will be permanently
-                    wiped.
-                  </div>
-                </div>
+            <section className="rounded-lg border-2 border-[#ba1a1a]/50 bg-[#ffdad6]/20 p-6">
+              <div className="mb-4 flex items-center gap-2 text-[#ba1a1a]">
+                <span className="material-symbols-outlined">warning</span>
+                <h2 className="text-[24px] font-bold leading-8">
+                  Zona peligrosa
+                </h2>
               </div>
 
-              <div className="mt-5">
-                <Button
-                  variant="outline"
-                  className="rounded-2xl border-red-500/30 bg-red-500/5 text-red-200 hover:bg-red-500/10"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete account
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+              <p className="mb-6 text-[16px] leading-6 text-[#5b403f]">
+                Una vez que elimines tu cuenta, no hay vuelta atrás. Se perderán todos tus tickets activos, historial de compras y beneficios acumulados.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                className="hover-shake rounded-lg bg-[#ba1a1a] px-6 py-3 text-[14px] font-bold leading-5 tracking-[0.05em] text-white shadow-md transition-all"
+              >
+                Eliminar cuenta permanentemente
+              </button>
+            </section>
+          </div>
         </div>
+      </main>
+
+      {avatarOpen ? (
+        <AvatarModal
+          avatarPreview={avatarPreview}
+          avatarErr={avatarErr}
+          avatarUploading={avatarUploading}
+          onPickAvatar={onPickAvatar}
+          onUpload={uploadAvatar}
+          onClose={() => {
+            setAvatarOpen(false);
+            clearAvatarPick();
+          }}
+          onClear={clearAvatarPick}
+        />
+      ) : null}
+
+      {deleteOpen ? (
+        <DeleteModal
+          value={deleteWord}
+          setValue={setDeleteWord}
+          canDelete={canDelete}
+          onConfirm={confirmDelete}
+          onClose={() => {
+            setDeleteOpen(false);
+            setDeleteWord("");
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ProfileStyles() {
+  return (
+    <style>{`
+      .profile-shadow {
+        box-shadow: 0px 4px 20px rgba(23, 86, 118, 0.08);
+      }
+
+      @keyframes pulse-subtle {
+        0%, 100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.03);
+          opacity: 0.9;
+        }
+      }
+
+      .animate-pulse-subtle {
+        animation: pulse-subtle 2s infinite ease-in-out;
+      }
+
+      @keyframes soft-shake {
+        0%, 100% {
+          transform: translateX(0);
+        }
+        25% {
+          transform: translateX(-2px);
+        }
+        75% {
+          transform: translateX(2px);
+        }
+      }
+
+      .hover-shake:hover {
+        animation: soft-shake 0.3s ease-in-out infinite;
+      }
+
+      @keyframes fadeInUp {
+        from {
+          transform: translateY(20px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      .fade-in-up {
+        animation: fadeInUp 0.6s ease-out forwards;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .fade-in-up,
+        .animate-pulse-subtle,
+        .hover-shake:hover {
+          animation: none !important;
+        }
+      }
+    `}</style>
+  );
+}
+
+function SectionCard({ icon, title, titleColor = "#215d7d", children }) {
+  return (
+    <section className="profile-shadow rounded-lg border border-[#e4bdbc] bg-white p-6">
+      <div
+        className="mb-6 flex items-center gap-2"
+        style={{ color: titleColor }}
+      >
+        <span className="material-symbols-outlined">{icon}</span>
+        <h2 className="text-[24px] font-bold leading-8">{title}</h2>
       </div>
 
-      <AvatarUploadDialog
-        open={avatarOpen}
-        onOpenChange={(v) => {
-          setAvatarOpen(v);
-          if (!v) clearAvatarPick();
-        }}
-        avatarPreview={avatarPreview}
-        avatarErr={avatarErr}
-        avatarUploading={avatarUploading}
-        onPick={(file) => onPickAvatar(file)}
-        onClear={clearAvatarPick}
-        onUpload={uploadAvatar}
-      />
+      {children}
+    </section>
+  );
+}
 
-      <DeleteAccountDialog
-        open={deleteOpen}
-        onOpenChange={(v) => {
-          setDeleteOpen(v);
-          if (!v) setDeleteWord("");
-        }}
-        value={deleteWord}
-        setValue={setDeleteWord}
-        canDelete={canDelete}
-        onConfirm={confirmDelete}
+function InputField({ label, value, onChange, placeholder, type = "text" }) {
+  return (
+    <div className="space-y-2">
+      <label className="text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]">
+        {label}
+      </label>
+
+      <input
+        className="h-12 w-full rounded-lg border border-[#e4bdbc] bg-[#f3faff] px-4 text-[#001f29] outline-none focus:border-[#215d7d] focus:ring-1 focus:ring-[#215d7d]"
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
       />
     </div>
   );
 }
 
-function AvatarUploadDialog({
-  open,
-  onOpenChange,
-  avatarPreview,
-  avatarErr,
-  avatarUploading,
-  onPick,
-  onClear,
-  onUpload,
-}) {
+function RoleOption({ active, icon, title, text, onClick }) {
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-
-        <Dialog.Content
-          aria-describedby="avatar-dialog-desc"
-          className="
-            fixed left-1/2 top-1/2 z-50
-            w-[92vw] max-w-lg
-            -translate-x-1/2 -translate-y-1/2
-            rounded-3xl border border-white/10
-            bg-[#0b0812]/95 p-6 shadow-2xl
-            max-h-[85vh] overflow-y-auto
-          "
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "relative rounded-lg border-2 p-6 text-left transition-colors",
+        active
+          ? "border-[#b20024] bg-[#d62839]/5"
+          : "border-[#e4bdbc] hover:border-[#215d7d]",
+      ].join(" ")}
+    >
+      <div className="mb-2 flex items-start justify-between">
+        <span
+          className={[
+            "material-symbols-outlined text-3xl",
+            active ? "text-[#b20024]" : "text-[#215d7d]",
+          ].join(" ")}
         >
-          <Dialog.Title className="sr-only">Upload photo</Dialog.Title>
-          <Dialog.Description id="avatar-dialog-desc" className="sr-only">
-            Choose a photo file and upload it to update your profile avatar.
-          </Dialog.Description>
+          {icon}
+        </span>
 
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-xs uppercase tracking-widest text-violet-300">
-                Upload photo
-              </div>
-              <div className="mt-2 text-2xl font-extrabold tracking-tight">
-                Profile avatar
-              </div>
-              <div className="mt-1 text-sm text-white/60">
-                PNG/JPG/WebP • Max 4MB
-              </div>
-            </div>
+        {active ? (
+          <span className="rounded-full bg-[#b20024] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-white">
+            Activo
+          </span>
+        ) : null}
+      </div>
 
-            <Dialog.Close className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white">
-              ✕
-            </Dialog.Close>
-          </div>
+      <h3 className="mb-2 text-[20px] font-bold leading-6 text-[#001f29]">
+        {title}
+      </h3>
 
-          <Separator className="my-5 bg-white/10" />
-
-          <div className="grid gap-3">
-            {avatarPreview ? (
-              <div className="mx-auto h-40 w-40 overflow-hidden rounded-full border border-white/10 bg-black/30">
-                <img
-                  src={avatarPreview}
-                  alt="Preview"
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-sm text-white/60">
-                Choose an image to preview it here.
-              </div>
-            )}
-
-            <input
-              id="avatar-file"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => onPick(e.target.files?.[0] || null)}
-            />
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                onClick={() => document.getElementById("avatar-file")?.click()}
-                disabled={avatarUploading}
-              >
-                Choose file
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                onClick={onClear}
-                disabled={avatarUploading || !avatarPreview}
-              >
-                Clear
-              </Button>
-            </div>
-
-            {avatarErr ? (
-              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                {avatarErr}
-              </div>
-            ) : null}
-
-            <div className="grid gap-3">
-              <Button
-                type="button"
-                className="h-12 rounded-2xl bg-violet-600 hover:bg-violet-500"
-                disabled={avatarUploading || !avatarPreview}
-                onClick={onUpload}
-              >
-                {avatarUploading ? "UPLOADING..." : "UPLOAD"}
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                className="h-12 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                onClick={() => onOpenChange(false)}
-                disabled={avatarUploading}
-              >
-                Cancel
-              </Button>
-            </div>
-
-            <div className="text-center text-[11px] text-white/35">
-              This will update your avatarUrl in MongoDB.
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+      <p className="text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]">
+        {text}
+      </p>
+    </button>
   );
 }
 
-function DeleteAccountDialog({
-  open,
-  onOpenChange,
-  value,
-  setValue,
-  canDelete,
-  onConfirm,
+function AlertBox({ type = "error", children }) {
+  const classes = {
+    error: "border-[#ffdad6] bg-[#ffdad6] text-[#93000a]",
+    success: "border-green-200 bg-green-100 text-green-700",
+    warning: "border-yellow-200 bg-yellow-100 text-yellow-700",
+  };
+
+  return (
+    <div
+      className={[
+        "rounded-lg border px-4 py-3 text-sm font-semibold",
+        classes[type],
+      ].join(" ")}
+    >
+      {children}
+    </div>
+  );
+}
+
+function AvatarModal({
+  avatarPreview,
+  avatarErr,
+  avatarUploading,
+  onPickAvatar,
+  onUpload,
+  onClose,
+  onClear,
 }) {
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-
-        <Dialog.Content
-          aria-describedby="delete-dialog-desc"
-          className="
-            fixed left-1/2 top-1/2 z-50
-            w-[92vw] max-w-lg
-            -translate-x-1/2 -translate-y-1/2
-            rounded-3xl border border-red-500/30
-            bg-[#0b0812]/95 shadow-2xl
-            max-h-[85vh] overflow-y-auto
-          "
-        >
-          <Dialog.Title className="sr-only">Delete account</Dialog.Title>
-          <Dialog.Description id="delete-dialog-desc" className="sr-only">
-            Type DELETE to confirm the permanent deletion of your account.
-          </Dialog.Description>
-
-          <div className="sticky top-0 z-10 border-b border-red-500/20 bg-[#0b0812]/95 px-6 pt-6 pb-4 backdrop-blur-sm">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-red-500/10 ring-1 ring-red-500/25">
-                  <AlertTriangle className="h-5 w-5 text-red-300" />
-                </div>
-                <div>
-                  <div className="text-2xl font-extrabold tracking-tight text-red-200">
-                    DELETE ACCOUNT
-                  </div>
-                  <div className="text-xs uppercase tracking-widest text-red-200/50">
-                    Warning: this action is permanent.
-                  </div>
-                </div>
-              </div>
-
-              <Dialog.Close className="grid h-9 w-9 place-items-center rounded-xl border border-red-500/25 bg-red-500/5 text-red-200/70 hover:bg-red-500/10 hover:text-red-200">
-                ✕
-              </Dialog.Close>
-            </div>
-          </div>
-
-          <div className="px-6 pb-6 pt-5">
-            <p className="text-sm leading-6 text-white/65">
-              Deleting your account will result in the immediate and irreversible
-              loss of all purchased tickets, active memberships, and historical
-              event data. You will no longer be able to access your digital
-              wallet.
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-xl border border-[#d8f2ff] bg-white p-6 shadow-2xl">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-[14px] font-bold uppercase tracking-widest text-[#215d7d]">
+              Foto de perfil
             </p>
 
-            <div className="mt-6 text-[11px] uppercase tracking-widest text-white/40">
-              To proceed, please type{" "}
-              <span className="text-red-200">"DELETE"</span> below:
-            </div>
+            <h2 className="mt-1 text-[24px] font-bold leading-8 text-[#001f29]">
+              Cambiar foto
+            </h2>
 
-            <Input
-              className="mt-3 h-12 rounded-2xl border-red-500/25 bg-black/30 text-white placeholder:text-white/30"
-              placeholder="Type DELETE to confirm"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-            />
-
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <Button
-                className="h-12 rounded-2xl bg-red-600 hover:bg-red-500"
-                onClick={onConfirm}
-                disabled={!canDelete}
-              >
-                CONFIRM DELETION
-              </Button>
-
-              <Button
-                variant="outline"
-                className="h-12 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                onClick={() => onOpenChange(false)}
-              >
-                CANCEL
-              </Button>
-            </div>
-
-            <Separator className="my-6 bg-white/10" />
-
-            <div className="text-center text-[10px] uppercase tracking-widest text-white/25">
-              • Ticket-X secure identity management system •
-            </div>
+            <p className="mt-1 text-sm text-[#5b403f]">
+              PNG, JPG o WebP. Máximo 4MB.
+            </p>
           </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-lg border border-[#e4bdbc] text-[#5b403f] hover:bg-[#e5f6ff]"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="my-5 h-px bg-[#e4bdbc]" />
+
+        {avatarPreview ? (
+          <div className="mx-auto h-40 w-40 overflow-hidden rounded-full border border-[#e4bdbc] bg-[#e5f6ff]">
+            <img
+              src={avatarPreview}
+              alt="Preview"
+              className="h-full w-full object-cover"
+            />
+          </div>
+        ) : (
+          <div className="rounded-lg border border-[#e4bdbc] bg-[#f3faff] p-5 text-sm text-[#5b403f]">
+            Elegí una imagen para previsualizarla acá.
+          </div>
+        )}
+
+        <input
+          id="avatar-file"
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => onPickAvatar(event.target.files?.[0] || null)}
+        />
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => document.getElementById("avatar-file")?.click()}
+            disabled={avatarUploading}
+            className="rounded-lg border border-[#215d7d] px-4 py-2 text-sm font-bold text-[#215d7d] hover:bg-[#e5f6ff] disabled:opacity-60"
+          >
+            Elegir archivo
+          </button>
+
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={avatarUploading || !avatarPreview}
+            className="rounded-lg border border-[#e4bdbc] px-4 py-2 text-sm font-bold text-[#5b403f] hover:bg-[#e5f6ff] disabled:opacity-60"
+          >
+            Limpiar
+          </button>
+        </div>
+
+        {avatarErr ? <AlertBox type="error">{avatarErr}</AlertBox> : null}
+
+        <div className="mt-5 grid gap-3">
+          <button
+            type="button"
+            onClick={onUpload}
+            disabled={avatarUploading || !avatarPreview}
+            className="h-12 rounded-lg bg-[#d62839] font-bold text-white hover:bg-[#b20024] disabled:opacity-60"
+          >
+            {avatarUploading ? "Subiendo..." : "Subir foto"}
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={avatarUploading}
+            className="h-12 rounded-lg border border-[#e4bdbc] font-bold text-[#5b403f] hover:bg-[#e5f6ff]"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteModal({ value, setValue, canDelete, onConfirm, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-xl border border-[#ba1a1a]/40 bg-white p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[14px] font-bold uppercase tracking-widest text-[#ba1a1a]">
+              Acción permanente
+            </p>
+
+            <h2 className="mt-1 text-[24px] font-bold leading-8 text-[#ba1a1a]">
+              Eliminar cuenta
+            </h2>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-lg border border-[#e4bdbc] text-[#5b403f] hover:bg-[#e5f6ff]"
+          >
+            ✕
+          </button>
+        </div>
+
+        <p className="mt-5 text-sm leading-6 text-[#5b403f]">
+          Esta acción eliminará tu cuenta y puede afectar tus tickets, historial
+          de compras y datos asociados. Para confirmar, escribí{" "}
+          <strong>DELETE</strong>.
+        </p>
+
+        <input
+          className="mt-5 h-12 w-full rounded-lg border border-[#ba1a1a]/40 bg-[#f3faff] px-4 text-[#001f29] outline-none focus:border-[#ba1a1a]"
+          placeholder="Escribí DELETE para confirmar"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+
+        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!canDelete}
+            className="h-12 rounded-lg bg-[#ba1a1a] font-bold text-white hover:bg-[#93000a] disabled:opacity-60"
+          >
+            Confirmar eliminación
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-12 rounded-lg border border-[#e4bdbc] font-bold text-[#5b403f] hover:bg-[#e5f6ff]"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

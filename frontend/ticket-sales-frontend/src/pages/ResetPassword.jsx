@@ -1,21 +1,9 @@
+// src/pages/ResetPassword.jsx
+
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { resetPasswordRequest } from "@/api/auth.api";
-
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-
-import {
-  CheckCircle2,
-  AlertTriangle,
-  KeyRound,
-  ArrowLeft,
-  Eye,
-  EyeOff,
-} from "lucide-react";
 
 export function ResetPassword() {
   const nav = useNavigate();
@@ -34,22 +22,23 @@ export function ResetPassword() {
   const [err, setErr] = useState("");
 
   const passwordsMatch = password === confirmPassword;
+
   const canSubmit =
     token.trim() &&
     password.trim() &&
     confirmPassword.trim() &&
     passwordsMatch;
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleSubmit(event) {
+    event.preventDefault();
 
     if (!token) {
-      setErr("Missing reset token.");
+      setErr("Falta el token de recuperación.");
       return;
     }
 
     if (!passwordsMatch) {
-      setErr("Passwords do not match.");
+      setErr("Las contraseñas no coinciden.");
       return;
     }
 
@@ -70,7 +59,7 @@ export function ResetPassword() {
     } catch (error) {
       setErr(
         error?.response?.data?.message ||
-          "Could not reset password. The link may be invalid or expired."
+          "No se pudo restablecer la contraseña. El enlace puede ser inválido o haber expirado."
       );
     } finally {
       setSubmitting(false);
@@ -78,173 +67,237 @@ export function ResetPassword() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-80px)] max-w-6xl items-center px-4 py-10">
-      <div className="mx-auto w-full max-w-xl">
-        <Card className="border-white/10 bg-white/5 shadow-2xl">
-          <CardContent className="p-6 md:p-8">
-            <div className="mb-6 flex items-center gap-3">
-              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-violet-600/15 ring-1 ring-violet-500/30">
-                <KeyRound className="h-6 w-6 text-violet-300" />
+    <div className="ticketify-reset-password bg-[#f3faff] text-[#001f29]">
+      <ResetPasswordStyles />
+
+      <main className="tf-container flex min-h-[calc(100vh-160px)] items-center justify-center px-4 py-16">
+        <section className="relative w-full max-w-xl overflow-hidden rounded-2xl border border-[#baeaff] bg-white shadow-[0px_4px_20px_rgba(23,86,118,0.08)]">
+          <div className="absolute -left-24 -top-24 h-56 w-56 rounded-full bg-[#d8f2ff] blur-3xl" />
+          <div className="absolute -bottom-24 -right-24 h-56 w-56 rounded-full bg-[#ffdad8] blur-3xl" />
+
+          <div className="relative p-8 md:p-10">
+            <div className="mb-8 flex flex-col items-center text-center">
+              <div className="mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-[#e5f6ff] text-[#b20024]">
+                <span className="material-symbols-outlined text-4xl">
+                  key
+                </span>
               </div>
 
-              <div>
-                <div className="text-xs uppercase tracking-[0.22em] text-violet-300">
-                  Account Security
-                </div>
-                <h1 className="mt-1 text-3xl font-extrabold tracking-tight md:text-4xl">
-                  Reset Password
-                </h1>
-              </div>
+              <p className="mb-2 text-[14px] font-semibold uppercase leading-5 tracking-[0.12em] text-[#b20024]">
+                Seguridad de cuenta
+              </p>
+
+              <h1 className="text-[32px] font-extrabold leading-10 tracking-[-0.01em] text-[#001f29]">
+                Crear nueva contraseña
+              </h1>
+
+              <p className="mt-3 max-w-md text-[16px] leading-6 text-[#5b403f]">
+                Elegí una contraseña segura para volver a acceder a tu cuenta de
+                Ticketify.
+              </p>
             </div>
 
             {!token ? (
               <div className="space-y-5">
-                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
+                <div className="rounded-xl border border-[#ffdad6] bg-[#ffdad6] p-4 text-[#93000a]">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <span className="material-symbols-outlined mt-0.5">
+                      warning
+                    </span>
+
                     <div>
-                      <div className="font-semibold">Invalid reset link</div>
-                      <div className="mt-1 text-sm text-red-100/80">
-                        This password reset link is missing the required token.
-                      </div>
+                      <p className="font-bold">Enlace inválido</p>
+
+                      <p className="mt-1 text-sm leading-6">
+                        Este enlace de recuperación no tiene el token necesario.
+                        Solicitá un nuevo link para restablecer tu contraseña.
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                <Button
-                  asChild
-                  variant="outline"
-                  className="h-12 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
+                <Link
+                  to="/forgot-password"
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#b20024] px-6 text-[14px] font-semibold leading-5 tracking-[0.05em] text-white transition-all hover:bg-[#d62839] active:scale-[0.98]"
                 >
-                  <Link to="/forgot-password">
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Request New Link
-                  </Link>
-                </Button>
+                  <span className="material-symbols-outlined text-lg">
+                    arrow_back
+                  </span>
+                  Solicitar nuevo enlace
+                </Link>
+
+                <Link
+                  to="/login"
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-[#e4bdbc] bg-white px-6 text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f] transition-all hover:bg-[#e5f6ff] active:scale-[0.98]"
+                >
+                  Volver al login
+                </Link>
               </div>
             ) : done ? (
               <div className="space-y-5">
-                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-200">
+                <div className="rounded-xl border border-green-200 bg-green-100 p-4 text-green-800">
                   <div className="flex items-start gap-3">
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+                    <span className="material-symbols-outlined mt-0.5 text-green-700">
+                      check_circle
+                    </span>
+
                     <div>
-                      <div className="font-semibold">
-                        Password updated successfully
-                      </div>
-                      <div className="mt-1 text-sm text-emerald-100/80">
-                        Your password has been reset. Redirecting to login...
-                      </div>
+                      <p className="font-bold">
+                        Contraseña actualizada correctamente
+                      </p>
+
+                      <p className="mt-1 text-sm leading-6">
+                        Tu contraseña fue restablecida. Te estamos redirigiendo
+                        al login...
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                <Button
-                  asChild
-                  className="h-12 rounded-2xl bg-violet-600 hover:bg-violet-500"
+                <Link
+                  to="/login"
+                  className="flex h-12 w-full items-center justify-center rounded-lg bg-[#b20024] px-6 text-[14px] font-semibold leading-5 tracking-[0.05em] text-white transition-all hover:bg-[#d62839] active:scale-[0.98]"
                 >
-                  <Link to="/login">Go to Login</Link>
-                </Button>
+                  Ir al login
+                </Link>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-5">
-                <p className="text-sm leading-6 text-white/60">
-                  Create a new password for your account. Make sure it’s secure
-                  and easy for you to remember.
-                </p>
+                <div>
+                  <label
+                    htmlFor="password"
+                    className="mb-2 block text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]"
+                  >
+                    Nueva contraseña
+                  </label>
 
-                <div className="grid gap-2">
-                  <Label className="text-white/70">New Password</Label>
                   <div className="relative">
-                    <Input
+                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[#215d7d]">
+                      lock
+                    </span>
+
+                    <input
+                      id="password"
                       type={showPass ? "text" : "password"}
                       autoComplete="new-password"
-                      className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
-                      placeholder="Create a new password"
+                      className="h-12 w-full rounded-lg border border-[#e4bdbc] bg-[#f3faff] pl-12 pr-12 text-[#001f29] outline-none transition-all placeholder:text-[#906f6e] focus:border-[#215d7d] focus:ring-2 focus:ring-[#215d7d]/20"
+                      placeholder="Ingresá tu nueva contraseña"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(event) => setPassword(event.target.value)}
                       required
                     />
+
                     <button
                       type="button"
-                      onClick={() => setShowPass((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                      onClick={() => setShowPass((value) => !value)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[#5b403f] transition-colors hover:text-[#b20024]"
+                      aria-label={
+                        showPass ? "Ocultar contraseña" : "Mostrar contraseña"
+                      }
                     >
-                      {showPass ? (
-                        <EyeOff className="h-5 w-5" />
-                      ) : (
-                        <Eye className="h-5 w-5" />
-                      )}
+                      <span className="material-symbols-outlined text-xl">
+                        {showPass ? "visibility_off" : "visibility"}
+                      </span>
                     </button>
                   </div>
                 </div>
 
-                <div className="grid gap-2">
-                  <Label className="text-white/70">Confirm New Password</Label>
+                <div>
+                  <label
+                    htmlFor="confirmPassword"
+                    className="mb-2 block text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]"
+                  >
+                    Confirmar contraseña
+                  </label>
+
                   <div className="relative">
-                    <Input
+                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[#215d7d]">
+                      lock_reset
+                    </span>
+
+                    <input
+                      id="confirmPassword"
                       type={showConfirmPass ? "text" : "password"}
                       autoComplete="new-password"
-                      className="h-12 rounded-2xl border-white/10 bg-white/5 pr-12 text-white placeholder:text-white/30"
-                      placeholder="Repeat your new password"
+                      className="h-12 w-full rounded-lg border border-[#e4bdbc] bg-[#f3faff] pl-12 pr-12 text-[#001f29] outline-none transition-all placeholder:text-[#906f6e] focus:border-[#215d7d] focus:ring-2 focus:ring-[#215d7d]/20"
+                      placeholder="Repetí tu nueva contraseña"
                       value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      onChange={(event) =>
+                        setConfirmPassword(event.target.value)
+                      }
                       required
                     />
+
                     <button
                       type="button"
-                      onClick={() => setShowConfirmPass((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                      onClick={() => setShowConfirmPass((value) => !value)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[#5b403f] transition-colors hover:text-[#b20024]"
+                      aria-label={
+                        showConfirmPass
+                          ? "Ocultar contraseña"
+                          : "Mostrar contraseña"
+                      }
                     >
-                      {showConfirmPass ? (
-                        <EyeOff className="h-5 w-5" />
-                      ) : (
-                        <Eye className="h-5 w-5" />
-                      )}
+                      <span className="material-symbols-outlined text-xl">
+                        {showConfirmPass ? "visibility_off" : "visibility"}
+                      </span>
                     </button>
                   </div>
                 </div>
 
                 {confirmPassword && !passwordsMatch ? (
-                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                    Passwords do not match.
+                  <div className="rounded-xl border border-amber-200 bg-amber-100 px-4 py-3 text-sm font-semibold leading-6 text-amber-800">
+                    Las contraseñas no coinciden.
                   </div>
                 ) : null}
 
                 {err ? (
-                  <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  <div className="rounded-xl border border-[#ffdad6] bg-[#ffdad6] px-4 py-3 text-sm font-semibold leading-6 text-[#93000a]">
                     <div className="flex items-start gap-2">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span className="material-symbols-outlined mt-0.5 text-base">
+                        warning
+                      </span>
+
                       <span>{err}</span>
                     </div>
                   </div>
                 ) : null}
 
-                <div className="grid gap-3 pt-1">
-                  <Button
-                    type="submit"
-                    className="h-12 rounded-2xl bg-violet-600 hover:bg-violet-500"
-                    disabled={submitting || !canSubmit}
-                  >
-                    {submitting ? "Updating..." : "Reset Password"}
-                  </Button>
+                <button
+                  type="submit"
+                  disabled={submitting || !canSubmit}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#b20024] px-6 text-[14px] font-semibold leading-5 tracking-[0.05em] text-white shadow-sm transition-all hover:bg-[#d62839] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {submitting ? "Actualizando..." : "Restablecer contraseña"}
+                  <span className="material-symbols-outlined text-lg">
+                    arrow_forward
+                  </span>
+                </button>
 
-                  <Button
-                    asChild
-                    type="button"
-                    variant="outline"
-                    className="h-12 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                  >
-                    <Link to="/login">
-                      <ArrowLeft className="mr-2 h-4 w-4" />
-                      Back to Login
-                    </Link>
-                  </Button>
-                </div>
+                <Link
+                  to="/login"
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-[#e4bdbc] bg-white px-6 text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f] transition-all hover:bg-[#e5f6ff] active:scale-[0.98]"
+                >
+                  <span className="material-symbols-outlined text-lg">
+                    arrow_back
+                  </span>
+                  Volver al login
+                </Link>
               </form>
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </section>
+      </main>
     </div>
+  );
+}
+
+function ResetPasswordStyles() {
+  return (
+    <style>{`
+      .ticketify-reset-password {
+        min-height: 100%;
+      }
+    `}</style>
   );
 }

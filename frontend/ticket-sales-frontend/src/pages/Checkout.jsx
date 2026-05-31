@@ -1,56 +1,76 @@
+// src/pages/Checkout.jsx
+
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { getEventById, getEventTicketTypes } from "@/api/events.api.js";
 import { createOrderRequest } from "@/api/orders.api.js";
 import { createPreferenceRequest } from "@/api/payments.api.js";
 import { useAuth } from "@/hooks/useAuth.js";
 
-import { SiteNavbar } from "@/components/layout/SiteNavbar";
-import { UserNavbar } from "@/components/layout/UserNavbar";
-
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
+const SERVICE_CHARGE_PERCENT = 0.1;
 
 function safeBanner(url) {
   return (
     url ||
-    "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&w=1400&q=80"
+    "https://lh3.googleusercontent.com/aida-public/AB6AXuDHgIKE4akJ9mWWgFA4AaKF-Rn4SD1-UBrp8JWLNS8a3866sy2EE_gLog1tOaVEt3aikvQ8Jd_qBfgH2VIZVYzpf73Vng3D4Re9yCOOSpMhjiv1sffGiWgeOI6AxvCDlFXhx3an1GvWiQ2aTnJO9opwBtfu5b1fu1rTdwSbhzJT43446tGCdyGBt7E0fmfJGxMYe8I0-L7LE6znfRJm34d8iyc1j_V7RpDMjv-ztu2eGKCDacHhq8wwaxFVUZ7iCIcOBadPjFpjxqhJ"
   );
 }
 
-function formatDate(iso) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-AR", {
+function getTicketId(ticket) {
+  return ticket?._id || ticket?.id;
+}
+
+function formatDateLong(iso) {
+  if (!iso) return "Fecha a confirmar";
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "Fecha a confirmar";
+
+  return date.toLocaleDateString("es-AR", {
+    weekday: "long",
     day: "2-digit",
-    month: "short",
+    month: "long",
     year: "numeric",
   });
 }
 
-function Money({ value, currency = "USD" }) {
-  if (value == null) return <span>—</span>;
+function formatTime(iso) {
+  if (!iso) return "Hora a confirmar";
 
-  return (
-    <span>
-      ${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2 })}{" "}
-      <span className="text-xs text-white/50">{currency}</span>
-    </span>
-  );
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "Hora a confirmar";
+
+  return date.toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function money(value) {
+  const amount = Number(value || 0);
+
+  return `$${amount.toLocaleString("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function isEventEnded(startAt) {
+  if (!startAt) return false;
+  return new Date(startAt) <= new Date();
 }
 
 export function Checkout() {
   const { id: eventId } = useParams();
   const { state } = useLocation();
-  const nav = useNavigate();
+  const navigate = useNavigate();
 
-  const { isAuth, loading: authLoading, user, logout } = useAuth();
+  const { isAuth, loading: authLoading, user } = useAuth();
 
-  const ticketTypeId = state?.ticketTypeId;
+  const initialTicketTypeId = state?.ticketTypeId || null;
 
   const [event, setEvent] = useState(null);
   const [ticketTypes, setTicketTypes] = useState([]);
@@ -61,28 +81,29 @@ export function Checkout() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [coupon, setCoupon] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
+    if (authLoading) return;
+
+    if (!isAuth) {
+      navigate("/login", { replace: true });
+    }
+  }, [authLoading, isAuth, navigate]);
+
+  useEffect(() => {
     if (!user) return;
 
     if (!email && user.email) setEmail(user.email);
-    if (!fullName && user.username) setFullName(user.username);
-  }, [user, email, fullName]);
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!isAuth) nav("/login", { replace: true });
-  }, [authLoading, isAuth, nav]);
-
-  useEffect(() => {
-    if (!ticketTypeId) {
-      nav(`/events/${eventId}`, { replace: true });
+    if (!fullName && (user.fullName || user.username || user.name)) {
+      setFullName(user.fullName || user.username || user.name);
     }
-  }, [ticketTypeId, eventId, nav]);
+  }, [user, email, fullName]);
 
   useEffect(() => {
     let alive = true;
@@ -92,31 +113,47 @@ export function Checkout() {
         setLoading(true);
         setErrorMsg("");
 
-        const [evRes, ttRes] = await Promise.all([
+        const [eventResponse, ticketResponse] = await Promise.all([
           getEventById(eventId),
           getEventTicketTypes(eventId),
         ]);
 
         if (!alive) return;
 
-        const ev = evRes?.data?.event ?? null;
-        const tts = ttRes?.data?.ticketTypes ?? [];
+        const nextEvent =
+          eventResponse?.data?.event ?? eventResponse?.data ?? null;
 
-        setEvent(ev);
-        setTicketTypes(Array.isArray(tts) ? tts : []);
+        const nextTicketTypes = ticketResponse?.data?.ticketTypes ?? [];
 
-        const found = (tts || []).find((t) => t.id === ticketTypeId) ?? null;
-        setSelectedTT(found);
+        const safeTicketTypes = Array.isArray(nextTicketTypes)
+          ? nextTicketTypes
+          : [];
 
-        const available = Number(found?.available ?? 0);
+        const selectedFromState = safeTicketTypes.find(
+          (ticket) => getTicketId(ticket) === initialTicketTypeId
+        );
 
-        if (available <= 0) {
+        const firstAvailable = safeTicketTypes.find(
+          (ticket) => Number(ticket.available ?? 0) > 0
+        );
+
+        const nextSelected =
+          selectedFromState || firstAvailable || safeTicketTypes[0] || null;
+
+        setEvent(nextEvent);
+        setTicketTypes(safeTicketTypes);
+        setSelectedTT(nextSelected);
+
+        const available = Number(nextSelected?.available ?? 0);
+
+        if (available > 0) {
+          setQty((current) => Math.min(Math.max(1, current), available));
+        } else {
           setQty(1);
-        } else if (qty > available) {
-          setQty(available);
         }
-      } catch (e) {
-        setErrorMsg("No se pudo cargar el checkout. " + (e?.message || ""));
+      } catch (error) {
+        console.error("CHECKOUT_LOAD_ERROR:", error);
+        setErrorMsg("No se pudo cargar el checkout.");
       } finally {
         if (!alive) return;
         setLoading(false);
@@ -128,32 +165,27 @@ export function Checkout() {
     return () => {
       alive = false;
     };
-  }, [eventId, ticketTypeId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const maxAllowed = useMemo(() => {
-    const available = Number(selectedTT?.available ?? 0);
-    return Math.max(0, available);
-  }, [selectedTT]);
-
-  const unitPrice = Number(selectedTT?.price ?? 0);
-  const subtotal = unitPrice * qty;
+  }, [eventId, initialTicketTypeId]);
 
   const now = new Date();
 
+  const maxAllowed = useMemo(() => {
+    return Math.max(0, Number(selectedTT?.available ?? 0));
+  }, [selectedTT]);
+
   const eventAlreadyStartedOrPassed = useMemo(() => {
-    if (!event?.startAt) return false;
-    return new Date(event.startAt) <= now;
-  }, [event, now]);
+    return isEventEnded(event?.startAt);
+  }, [event]);
 
   const saleNotStarted = useMemo(() => {
     if (!selectedTT?.saleStartAt) return false;
     return new Date(selectedTT.saleStartAt) > now;
-  }, [selectedTT, now]);
+  }, [selectedTT]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saleEnded = useMemo(() => {
     if (!selectedTT?.saleEndAt) return false;
     return new Date(selectedTT.saleEndAt) < now;
-  }, [selectedTT, now]);
+  }, [selectedTT]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const soldOut = maxAllowed <= 0;
 
@@ -164,17 +196,28 @@ export function Checkout() {
     if (saleEnded) return "La venta de esta entrada ya finalizó.";
     if (soldOut) return "Este tipo de entrada está agotado.";
     return "";
-  }, [selectedTT, eventAlreadyStartedOrPassed, saleNotStarted, saleEnded, soldOut]);
+  }, [
+    selectedTT,
+    eventAlreadyStartedOrPassed,
+    saleNotStarted,
+    saleEnded,
+    soldOut,
+  ]);
 
   const canBuy = !cannotBuyReason;
 
+  const unitPrice = Number(selectedTT?.price ?? 0);
+  const subtotal = unitPrice * qty;
+  const serviceCharge = subtotal * SERVICE_CHARGE_PERCENT;
+  const total = subtotal + serviceCharge;
+
   function decQty() {
-    setQty((q) => Math.max(1, q - 1));
+    setQty((current) => Math.max(1, current - 1));
   }
 
   function incQty() {
     if (!maxAllowed) return;
-    setQty((q) => Math.min(maxAllowed, q + 1));
+    setQty((current) => Math.min(maxAllowed, current + 1));
   }
 
   async function onConfirm() {
@@ -183,7 +226,8 @@ export function Checkout() {
       setErrorMsg("");
 
       if (!selectedTT) {
-        throw new Error("No ticket type selected");
+        setErrorMsg("No se encontró el tipo de entrada seleccionado.");
+        return;
       }
 
       if (!canBuy) {
@@ -192,346 +236,449 @@ export function Checkout() {
       }
 
       if (qty < 1) {
-        throw new Error("Invalid qty");
-      }
-
-      const available = Number(selectedTT?.available ?? 0);
-
-      if (available <= 0) {
-        setErrorMsg("Este tipo de entrada está agotado.");
+        setErrorMsg("La cantidad mínima debe ser 1.");
         return;
       }
 
-      if (qty > available) {
-        setErrorMsg(`Solo quedan ${available} entradas disponibles.`);
+      if (qty > maxAllowed) {
+        setErrorMsg(`Solo quedan ${maxAllowed} entradas disponibles.`);
         return;
       }
 
-      const createOrderRes = await createOrderRequest({
+      const selectedTicketTypeId = getTicketId(selectedTT);
+
+      const orderResponse = await createOrderRequest({
         eventId,
-        items: [{ ticketTypeId: selectedTT.id, qty }],
+        items: [
+          {
+            ticketTypeId: selectedTicketTypeId,
+            qty,
+          },
+        ],
       });
 
-      const orderId = createOrderRes?.data?.order?._id;
+      const orderId =
+        orderResponse?.data?.order?._id || orderResponse?.data?.order?.id;
 
       if (!orderId) {
         throw new Error("Order not created");
       }
 
-      const preferenceRes = await createPreferenceRequest({ orderId });
+      const preferenceResponse = await createPreferenceRequest({ orderId });
 
       const checkoutUrl =
-        preferenceRes?.data?.sandboxInitPoint || preferenceRes?.data?.initPoint;
+        preferenceResponse?.data?.sandboxInitPoint ||
+        preferenceResponse?.data?.sandbox_init_point ||
+        preferenceResponse?.data?.initPoint ||
+        preferenceResponse?.data?.init_point;
 
       if (!checkoutUrl) {
         throw new Error("Checkout URL not generated");
       }
 
       window.location.href = checkoutUrl;
-    } catch (e) {
-      console.error("CHECKOUT_ERROR:", e);
+    } catch (error) {
+      console.error("CHECKOUT_ERROR:", error);
 
-      const status = e?.response?.status;
-      const backendMsg = e?.response?.data?.message;
+      const status = error?.response?.status;
+      const backendMessage = error?.response?.data?.message;
 
-      const msg =
-        backendMsg ||
+      const message =
+        backendMessage ||
         (status === 409
           ? "No hay suficiente stock para continuar con la compra."
           : status === 400
-          ? "No se pudo iniciar el pago."
-          : "Ocurrió un error al generar el checkout.");
+            ? "No se pudo iniciar el pago."
+            : "Ocurrió un error al generar el checkout.");
 
-      setErrorMsg(msg);
+      setErrorMsg(message);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <>
+    <div className="ticketify-checkout bg-[#f3faff] text-[#001f29]">
+      <CheckoutStyles />
 
-      <div className="mx-auto max-w-6xl px-4 py-10">
-        <div className="mb-8">
-          <h1 className="text-5xl font-extrabold tracking-tight md:text-6xl">
-            CHECKOUT
+      <main className="tf-container py-12">
+        <div className="mb-10">
+          <h1 className="mb-2 text-[32px] font-extrabold leading-[40px] tracking-[-0.01em] text-[#215d7d] md:text-[48px] md:leading-[56px] md:tracking-[-0.02em]">
+            Finalizar compra
           </h1>
-          <div className="mt-3 h-1 w-16 rounded-full bg-violet-600" />
+
+          <p className="text-[16px] leading-6 text-[#5b403f]">
+            Estás a pocos pasos de asegurar tus entradas.
+          </p>
         </div>
 
-        {loading ? (
-          <Card className="border-white/10 bg-white/5">
-            <div className="h-64 animate-pulse bg-white/10" />
-            <CardContent className="p-6">
-              <div className="h-6 w-1/2 animate-pulse rounded bg-white/10" />
-              <div className="mt-3 h-4 w-1/3 animate-pulse rounded bg-white/10" />
-            </CardContent>
-          </Card>
+        {loading || authLoading ? (
+          <div className="checkout-shadow rounded-xl border border-[#d8f2ff] bg-white p-6">
+            <div className="h-32 animate-pulse rounded-lg bg-[#d8f2ff]" />
+            <div className="mt-6 h-6 w-1/2 animate-pulse rounded bg-[#d8f2ff]" />
+            <div className="mt-3 h-4 w-1/3 animate-pulse rounded bg-[#d8f2ff]" />
+          </div>
         ) : errorMsg && !event ? (
-          <Card className="border-white/10 bg-white/5">
-            <CardContent className="p-6 text-sm text-white/80">
-              {errorMsg}
-            </CardContent>
-          </Card>
+          <div className="checkout-shadow rounded-xl border border-[#d8f2ff] bg-white p-6 text-[#5b403f]">
+            {errorMsg}
+          </div>
         ) : (
-          <div className="grid gap-6 md:grid-cols-[1fr_360px]">
-            <div className="space-y-6">
-              <Card className="border-white/10 bg-white/5">
-                <CardContent className="p-6">
-                  <div className="grid gap-6 md:grid-cols-[120px_1fr]">
-                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-                      <img
-                        src={safeBanner(event?.bannerUrl)}
-                        alt={event?.title}
-                        className="h-28 w-full object-cover"
-                      />
-                    </div>
+          <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
+            <div className="space-y-8 lg:col-span-8">
+              <section className="checkout-shadow rounded-xl border border-[#d8f2ff] bg-white p-6">
+                <h2 className="mb-6 flex items-center gap-2 text-[24px] font-bold leading-8 text-[#215d7d]">
+                  <span className="material-symbols-outlined">
+                    confirmation_number
+                  </span>
+                  Resumen del Evento
+                </h2>
 
-                    <div className="flex flex-col justify-between gap-4">
-                      <div>
-                        <div className="text-xs uppercase tracking-widest text-violet-300">
-                          Upcoming event
-                        </div>
-                        <div className="mt-1 text-2xl font-semibold">
-                          {event?.title}
-                        </div>
+                <div className="flex flex-col gap-6 md:flex-row">
+                  <div className="h-32 w-full shrink-0 overflow-hidden rounded-lg md:w-48">
+                    <img
+                      src={safeBanner(event?.bannerUrl)}
+                      alt={event?.title || "Evento"}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
 
-                        <div className="mt-2 text-sm text-white/60">
-                          📅 {formatDate(event?.startAt)}{" "}
-                          <span className="mx-2">•</span>
-                          📍 {event?.venue}
-                        </div>
+                  <div className="flex-1 space-y-2">
+                    <h3 className="text-[24px] font-bold leading-8 text-[#001f29]">
+                      {event?.title || "Evento"}
+                    </h3>
 
-                        {selectedTT ? (
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <Badge className="border-white/10 bg-violet-600/20 text-violet-100">
-                              {selectedTT.name}
-                            </Badge>
-                            <Badge className="border-white/10 bg-white/10 text-white">
-                              <Money value={selectedTT.price} />
-                            </Badge>
-
-                            {saleNotStarted ? (
-                              <Badge className="border-white/10 bg-yellow-500/20 text-yellow-100">
-                                Venta no iniciada
-                              </Badge>
-                            ) : null}
-
-                            {saleEnded ? (
-                              <Badge className="border-white/10 bg-red-500/20 text-red-100">
-                                Venta finalizada
-                              </Badge>
-                            ) : null}
-
-                            {eventAlreadyStartedOrPassed ? (
-                              <Badge className="border-white/10 bg-red-500/20 text-red-100">
-                                Evento finalizado
-                              </Badge>
-                            ) : null}
-                          </div>
-                        ) : null}
+                    <div className="grid grid-cols-1 gap-4 text-[16px] leading-6 text-[#5b403f] sm:grid-cols-2">
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-sm text-[#215d7d]">
+                          calendar_month
+                        </span>
+                        {formatDateLong(event?.startAt)}
                       </div>
 
-                      <Separator className="bg-white/10" />
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-sm text-[#215d7d]">
+                          schedule
+                        </span>
+                        {formatTime(event?.startAt)} HS
+                      </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div>
-                          <div className="text-xs uppercase tracking-widest text-white/50">
-                            Quantity
-                          </div>
-
-                          <div className="mt-2 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                            <button
-                              onClick={decQty}
-                              className="grid h-9 w-9 place-items-center rounded-xl bg-white/5 text-white/80 hover:bg-white/10"
-                              aria-label="decrease"
-                              disabled={submitting || !canBuy}
-                            >
-                              −
-                            </button>
-
-                            <div className="w-10 text-center text-lg font-semibold">
-                              {String(qty).padStart(2, "0")}
-                            </div>
-
-                            <button
-                              onClick={incQty}
-                              disabled={
-                                submitting || !canBuy || !maxAllowed || qty >= maxAllowed
-                              }
-                              className="grid h-9 w-9 place-items-center rounded-xl bg-white/5 text-white/80 hover:bg-white/10 disabled:opacity-50"
-                              aria-label="increase"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="rounded-full border border-violet-500/25 bg-violet-600/10 px-4 py-2 text-sm text-violet-200">
-                          {soldOut
-                            ? "SOLD OUT"
-                            : eventAlreadyStartedOrPassed
-                            ? "EVENT FINISHED"
-                            : saleEnded
-                            ? "SALE ENDED"
-                            : saleNotStarted
-                            ? "SALE NOT STARTED"
-                            : `⚠️ ${maxAllowed} tickets left!`}
-                        </div>
+                      <div className="flex items-center gap-2 sm:col-span-2">
+                        <span className="material-symbols-outlined text-sm text-[#215d7d]">
+                          location_on
+                        </span>
+                        {[event?.venue, event?.city].filter(Boolean).join(", ") ||
+                          "Ubicación a confirmar"}
                       </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </section>
 
-              <Card className="border-white/10 bg-white/5">
-                <CardContent className="p-6">
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-8 w-8 place-items-center rounded-xl bg-violet-600/20 ring-1 ring-violet-500/30">
-                      👤
-                    </div>
-                    <div className="text-lg font-semibold">Buyer Information</div>
+              <section className="checkout-shadow rounded-xl border border-[#d8f2ff] bg-white p-6">
+                <h2 className="mb-6 text-[24px] font-bold leading-8 text-[#215d7d]">
+                  Selección de Entradas
+                </h2>
+
+                {ticketTypes.length > 1 ? (
+                  <div className="mb-4 grid gap-3">
+                    {ticketTypes.map((ticketType) => {
+                      const ticketTypeId = getTicketId(ticketType);
+                      const active = ticketTypeId === getTicketId(selectedTT);
+                      const available = Number(ticketType.available ?? 0);
+
+                      return (
+                        <button
+                          key={ticketTypeId}
+                          type="button"
+                          onClick={() => {
+                            setSelectedTT(ticketType);
+                            setQty(1);
+                            setErrorMsg("");
+                          }}
+                          className={[
+                            "flex items-center justify-between rounded-lg border p-4 text-left transition-all",
+                            active
+                              ? "border-[#d62839] bg-[#fff2f1]"
+                              : "border-[#baeaff] bg-[#e5f6ff] hover:border-[#215d7d]",
+                          ].join(" ")}
+                        >
+                          <div>
+                            <p className="text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#d62839]">
+                              {ticketType.name || "Entrada"}
+                            </p>
+
+                            <p className="text-xs text-[#5b403f]">
+                              {available} disponibles
+                            </p>
+                          </div>
+
+                          <p className="text-[18px] font-bold text-[#001f29]">
+                            {money(ticketType.price)}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                <div className="flex items-center justify-between rounded-lg border border-[#baeaff] bg-[#e5f6ff] p-4">
+                  <div>
+                    <p className="text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#d62839]">
+                      {selectedTT?.name || "Entrada"}
+                    </p>
+
+                    <p className="text-xs text-[#5b403f]">
+                      Tickets disponibles: {maxAllowed}
+                    </p>
+
+                    {cannotBuyReason ? (
+                      <p className="mt-1 text-xs font-semibold text-[#ba1a1a]">
+                        {cannotBuyReason}
+                      </p>
+                    ) : null}
                   </div>
 
-                  <div className="mt-6 grid gap-5 md:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label className="text-white/70">Full Name</Label>
-                      <Input
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        placeholder="Enter your full name"
-                        className="border-white/10 bg-white/5"
-                      />
-                    </div>
+                  <div className="flex items-center gap-4 rounded-full border border-[#e4bdbc] bg-white px-2 py-1">
+                    <button
+                      type="button"
+                      onClick={decQty}
+                      disabled={submitting || !canBuy || qty <= 1}
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-[#215d7d] transition-colors hover:bg-[#d8f2ff] disabled:opacity-40"
+                      aria-label="Disminuir cantidad"
+                    >
+                      <span className="material-symbols-outlined">remove</span>
+                    </button>
 
-                    <div className="grid gap-2">
-                      <Label className="text-white/70">Email Address</Label>
-                      <Input
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="name@example.com"
-                        className="border-white/10 bg-white/5"
-                      />
-                    </div>
+                    <span className="w-6 text-center text-[20px] font-bold leading-6 text-[#001f29]">
+                      {qty}
+                    </span>
 
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label className="text-white/70">
-                        Phone Number (Optional)
-                      </Label>
-                      <Input
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="+54 11 1234-5678"
-                        className="border-white/10 bg-white/5"
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={incQty}
+                      disabled={submitting || !canBuy || qty >= maxAllowed}
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-[#215d7d] transition-colors hover:bg-[#d8f2ff] disabled:opacity-40"
+                      aria-label="Aumentar cantidad"
+                    >
+                      <span className="material-symbols-outlined">add</span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section className="checkout-shadow rounded-xl border border-[#d8f2ff] bg-white p-6">
+                <h2 className="mb-6 text-[24px] font-bold leading-8 text-[#215d7d]">
+                  Información del Comprador
+                </h2>
+
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]">
+                      Nombre completo
+                    </label>
+
+                    <input
+                      value={fullName}
+                      onChange={(eventInput) =>
+                        setFullName(eventInput.target.value)
+                      }
+                      className="h-12 w-full rounded-lg border border-[#906f6e] bg-[#f3faff] px-4 text-[#001f29] outline-none transition-all focus:border-[#215d7d] focus:ring-1 focus:ring-[#215d7d]"
+                      placeholder="Ej: Juan Pérez"
+                      type="text"
+                    />
                   </div>
 
-                  <div className="mt-6 rounded-2xl border border-violet-500/20 bg-violet-600/10 p-4 text-sm text-white/70">
-                    ℹ️ Serás redirigido a{" "}
-                    <span className="text-violet-200">Mercado Pago</span> para
-                    completar el pago de forma segura. Tus tickets aparecerán en{" "}
-                    <span className="text-violet-200">My Tickets</span> una vez
-                    confirmada la compra.
+                  <div>
+                    <label className="mb-2 block text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]">
+                      Email
+                    </label>
+
+                    <input
+                      value={email}
+                      onChange={(eventInput) => setEmail(eventInput.target.value)}
+                      className="h-12 w-full rounded-lg border border-[#906f6e] bg-[#f3faff] px-4 text-[#001f29] outline-none transition-all focus:border-[#215d7d] focus:ring-1 focus:ring-[#215d7d]"
+                      placeholder="juan@ejemplo.com"
+                      type="email"
+                    />
                   </div>
-                </CardContent>
-              </Card>
+
+                  <div>
+                    <label className="mb-2 block text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]">
+                      Celular
+                    </label>
+
+                    <input
+                      value={phone}
+                      onChange={(eventInput) => setPhone(eventInput.target.value)}
+                      className="h-12 w-full rounded-lg border border-[#906f6e] bg-[#f3faff] px-4 text-[#001f29] outline-none transition-all focus:border-[#215d7d] focus:ring-1 focus:ring-[#215d7d]"
+                      placeholder="+54 11 1234 5678"
+                      type="tel"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <div className="flex items-start gap-4 rounded-xl border-l-4 border-[#215d7d] bg-[#c9eeff] p-6">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
+                  <span
+                    className="material-symbols-outlined text-[#215d7d]"
+                    style={{ fontVariationSettings: '"FILL" 1' }}
+                  >
+                    security
+                  </span>
+                </div>
+
+                <div>
+                  <h4 className="text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#215d7d]">
+                    Pago Seguro vía Mercado Pago
+                  </h4>
+
+                  <p className="mt-1 text-sm leading-6 text-[#5b403f]">
+                    Al hacer clic en "Pagar", serás redirigido a la plataforma
+                    segura de Mercado Pago para completar tu transacción. Tus
+                    datos financieros están protegidos por encriptación de nivel
+                    bancario.
+                  </p>
+                </div>
+              </div>
 
               {errorMsg ? (
-                <Card className="border-white/10 bg-white/5">
-                  <CardContent className="p-4 text-sm text-red-200">
-                    {errorMsg}
-                  </CardContent>
-                </Card>
-              ) : null}
-
-              {!errorMsg && cannotBuyReason ? (
-                <Card className="border-white/10 bg-white/5">
-                  <CardContent className="p-4 text-sm text-yellow-200">
-                    {cannotBuyReason}
-                  </CardContent>
-                </Card>
+                <div className="rounded-xl border border-[#ffdad6] bg-[#ffdad6] p-4 text-sm font-semibold text-[#93000a]">
+                  {errorMsg}
+                </div>
               ) : null}
             </div>
 
-            <div className="space-y-6">
-              <Card className="border-white/10 bg-white/5">
-                <CardContent className="p-6">
-                  <div className="text-lg font-semibold">Payment Summary</div>
+            <aside className="lg:sticky lg:top-24 lg:col-span-4">
+              <div className="checkout-summary-shadow rounded-xl border border-[#baeaff] bg-white p-8">
+                <h2 className="mb-6 text-[24px] font-bold leading-8 text-[#215d7d]">
+                  Resumen de Compra
+                </h2>
 
-                  <div className="mt-5 grid gap-3 text-sm text-white/70">
-                    <div className="flex items-center justify-between">
-                      <span>Subtotal ({qty}x Ticket)</span>
-                      <span>
-                        <Money value={subtotal} />
-                      </span>
+                <div className="mb-8 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="max-w-[70%]">
+                      <p className="text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#001f29]">
+                        {event?.title || "Evento"}
+                      </p>
+
+                      <p className="text-xs text-[#5b403f]">
+                        {selectedTT?.name || "Entrada"} x {qty}
+                      </p>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span>Service Fees</span>
-                      <span>$0.00</span>
+                    <p className="text-[20px] font-bold leading-6 text-[#001f29]">
+                      {money(subtotal)}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 border-t border-[#baeaff] pt-4">
+                    <div className="flex justify-between text-sm text-[#5b403f]">
+                      <span>Subtotal</span>
+                      <span>{money(subtotal)}</span>
+                    </div>
+
+                    <div className="flex justify-between text-sm text-[#5b403f]">
+                      <span>Service Charge</span>
+                      <span>{money(serviceCharge)}</span>
                     </div>
                   </div>
 
-                  <Separator className="my-5 bg-white/10" />
+                  <div className="pt-4">
+                    <div className="flex gap-2">
+                      <input
+                        value={coupon}
+                        onChange={(eventInput) =>
+                          setCoupon(eventInput.target.value)
+                        }
+                        className="h-10 flex-1 rounded-lg border border-[#906f6e] px-3 text-sm text-[#001f29] outline-none focus:border-[#215d7d] focus:ring-1 focus:ring-[#215d7d]"
+                        placeholder="Código de descuento"
+                        type="text"
+                      />
 
-                  <div className="text-xs uppercase tracking-widest text-violet-300">
-                    Total amount
-                  </div>
-                  <div className="mt-2 text-4xl font-extrabold">
-                    <Money value={subtotal} />
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-lg bg-[#3e7697] px-4 text-sm font-semibold text-white opacity-80"
+                      >
+                        Aplicar
+                      </button>
+                    </div>
                   </div>
 
-                  <Button
-                    className="mt-6 h-12 w-full rounded-2xl bg-violet-600 text-white hover:bg-violet-500"
-                    disabled={submitting || !selectedTT || !canBuy}
-                    onClick={onConfirm}
+                  <div className="flex items-center justify-between border-t border-[#001f29]/10 pt-6">
+                    <span className="text-[24px] font-bold leading-8 text-[#001f29]">
+                      Total
+                    </span>
+
+                    <span className="text-[32px] font-extrabold leading-10 tracking-[-0.01em] text-[#d62839]">
+                      {money(total)}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={submitting || !selectedTT || !canBuy}
+                  onClick={onConfirm}
+                  className={[
+                    "flex w-full items-center justify-center gap-3 rounded-xl py-4 text-[24px] font-bold leading-8 shadow-lg transition-all active:scale-95",
+                    submitting || !selectedTT || !canBuy
+                      ? "cursor-not-allowed bg-[#906f6e] text-white/60"
+                      : "bg-[#d62839] text-white hover:shadow-xl",
+                  ].join(" ")}
+                >
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ fontVariationSettings: '"FILL" 1' }}
                   >
-                    {submitting ? "Procesando..." : "🔒 Confirmar / Pagar"}
-                  </Button>
+                    payments
+                  </span>
+                  {submitting ? "Procesando..." : "Pagar con Mercado Pago"}
+                </button>
 
-                  <div className="mt-4 text-center text-[11px] uppercase tracking-widest text-white/40">
-                    ENCRYPTED SECURE CHECKOUT
-                  </div>
+                <div className="mt-6 flex flex-wrap justify-center gap-4 opacity-50 grayscale transition-all duration-300 hover:grayscale-0">
+                  <span className="rounded bg-[#001f29]/20 px-3 py-1 text-xs font-bold text-[#001f29]">
+                    MP
+                  </span>
+                  <span className="rounded bg-[#001f29]/20 px-3 py-1 text-xs font-bold text-[#001f29]">
+                    VISA
+                  </span>
+                  <span className="rounded bg-[#001f29]/20 px-3 py-1 text-xs font-bold text-[#001f29]">
+                    MC
+                  </span>
+                </div>
+              </div>
 
-                  <Separator className="my-5 bg-white/10" />
-
-                  <div className="flex items-center justify-between gap-3">
-                    <Input
-                      placeholder="Promo code"
-                      className="border-white/10 bg-white/5"
-                      disabled
-                    />
-                    <Button
-                      variant="outline"
-                      className="border-white/10 bg-white/5 hover:bg-white/10"
-                      disabled
-                    >
-                      Apply
-                    </Button>
-                  </div>
-
-                  <div className="mt-4 text-xs text-white/50">
-                    Serás redirigido al checkout seguro de Mercado Pago para
-                    finalizar la compra.
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-white/10 bg-white/5">
-                <CardContent className="p-5 text-sm text-white/70">
-                  <div className="font-semibold text-white/90">Tip</div>
-                  <div className="mt-2">
-                    Al continuar, se creará tu orden y luego serás redirigido al
-                    checkout seguro de{" "}
-                    <span className="text-violet-200">Mercado Pago</span>.
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+              <div className="mt-6 px-4 text-center">
+                <p className="flex items-center justify-center gap-1 text-xs text-[#5b403f]">
+                  <span className="material-symbols-outlined text-[14px]">
+                    info
+                  </span>
+                  ¿Necesitás ayuda? Visitá nuestro{" "}
+                  <Link to="/start" className="text-[#215d7d] underline">
+                    Centro de Ayuda
+                  </Link>
+                </p>
+              </div>
+            </aside>
           </div>
         )}
-      </div>
-    </>
+      </main>
+    </div>
+  );
+}
+
+function CheckoutStyles() {
+  return (
+    <style>{`
+      .checkout-shadow {
+        box-shadow: 0px 4px 20px rgba(23, 86, 118, 0.08);
+      }
+
+      .checkout-summary-shadow {
+        box-shadow: 0px 10px 40px rgba(23, 86, 118, 0.12);
+      }
+    `}</style>
   );
 }

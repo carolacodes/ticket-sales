@@ -1,6 +1,9 @@
-// Dashboard.jsx
+// src/pages/Dashboard.jsx
+
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import * as Dialog from "@radix-ui/react-dialog";
+
 import { useMercadoPago } from "@/hooks/useMercadoPago";
 import { api } from "@/api/axios";
 
@@ -20,49 +23,6 @@ import {
   deleteTicketTypeRequest,
 } from "@/api/ticketTypes.api";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
-
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
-import * as Dialog from "@radix-ui/react-dialog";
-
-import {
-  Plus,
-  Search,
-  MoreHorizontal,
-  Sparkles,
-  ArrowUpRight,
-  Ticket,
-  DollarSign,
-  ClipboardList,
-  Image as ImageIcon,
-  X,
-  ScanLine,
-} from "lucide-react";
-
-/* =========================
-   Helpers
-========================= */
 function uuid() {
   try {
     return crypto.randomUUID();
@@ -71,17 +31,27 @@ function uuid() {
   }
 }
 
-function money(n) {
-  const v = Number(n || 0);
-  return v.toLocaleString("en-US", { style: "currency", currency: "USD" });
+function money(value) {
+  const amount = Number(value || 0);
+
+  return `$${amount.toLocaleString("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
 }
-function number(n) {
-  const v = Number(n || 0);
-  return v.toLocaleString("en-US");
+
+function number(value) {
+  return Number(value || 0).toLocaleString("es-AR");
 }
+
 function formatDateTime(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("es-AR", {
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleString("es-AR", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -89,21 +59,19 @@ function formatDateTime(iso) {
     minute: "2-digit",
   });
 }
-function statusBadge(status) {
-  if (status === "PUBLISHED")
-    return "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
-  if (status === "ENDED")
-    return "border-zinc-500/25 bg-zinc-500/10 text-zinc-200";
-  return "border-amber-500/25 bg-amber-500/10 text-amber-200";
-}
 
 function toDatetimeLocal(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
-    d.getDate()
-  )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  const pad = (value) => String(value).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function tagsToString(tags) {
@@ -113,16 +81,47 @@ function tagsToString(tags) {
 function stringToTags(str) {
   return String(str || "")
     .split(",")
-    .map((s) => s.trim())
+    .map((tag) => tag.trim())
     .filter(Boolean);
+}
+
+function getEventId(event) {
+  return event?.id || event?._id;
+}
+
+function safeEventImage(url) {
+  return (
+    url ||
+    "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?auto=format&fit=crop&w=800&q=80"
+  );
+}
+
+function statusLabel(status) {
+  const clean = String(status || "").toUpperCase();
+
+  if (clean === "PUBLISHED") return "Activo";
+  if (clean === "ENDED") return "Finalizado";
+  if (clean === "DRAFT") return "Draft";
+
+  return clean || "—";
+}
+
+function statusClass(status) {
+  const clean = String(status || "").toUpperCase();
+
+  if (clean === "PUBLISHED") {
+    return "bg-green-100 text-green-700";
+  }
+
+  if (clean === "ENDED") {
+    return "bg-[#ffdad6] text-[#93000a]";
+  }
+
+  return "bg-[#c7e7ff] text-[#215d7d]";
 }
 
 const ALLOWED_STATUS = new Set(["DRAFT", "PUBLISHED", "ENDED"]);
 
-/* =========================
-   Upload helper (Cloudinary via backend)
-   Backend route: POST /api/events/:id/banner (multipart form-data, field "file")
-========================= */
 async function uploadEventBanner(eventId, file) {
   if (!eventId) throw new Error("Missing eventId for banner upload");
   if (!file) throw new Error("Missing file");
@@ -130,11 +129,14 @@ async function uploadEventBanner(eventId, file) {
   const form = new FormData();
   form.append("file", file);
 
-  const r = await api.post(`/events/${eventId}/banner`, form, {
-    headers: { "Content-Type": "multipart/form-data" },
+  const response = await api.post(`/events/${eventId}/banner`, form, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
   });
 
-  const data = r?.data || {};
+  const data = response?.data || {};
+
   const url =
     data.bannerUrl ||
     data.url ||
@@ -153,18 +155,16 @@ async function uploadEventBanner(eventId, file) {
 }
 
 export function Dashboard() {
+  const { connected, loading: mpLoading, connect } = useMercadoPago();
+
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState(null);
-  const { connected, loading: mpLoading, connect } = useMercadoPago();
   const [q, setQ] = useState("");
-  const [activeEventId, setActiveEventId] = useState(null);
 
+  const [activeEventId, setActiveEventId] = useState(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insights, setInsights] = useState(null);
 
-  /* =========================
-      CREATE EVENT MODAL (event + ticket drafts)
-  ========================= */
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [bannerUploading, setBannerUploading] = useState(false);
@@ -181,13 +181,15 @@ export function Dashboard() {
   const [bannerPreview, setBannerPreview] = useState("");
 
   const [ticketDrafts, setTicketDrafts] = useState([
-    { tmpId: uuid(), name: "GENERAL", price: 20, currency: "USD", capacity: 40 },
-    { tmpId: uuid(), name: "VIP", price: 50, currency: "USD", capacity: 40 },
+    {
+      tmpId: uuid(),
+      name: "General",
+      price: 20,
+      currency: "USD",
+      capacity: 40,
+    },
   ]);
 
-  /* =========================
-      EDIT EVENT MODAL (event fields + ticket types CRUD)
-  ========================= */
   const [editEventOpen, setEditEventOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
@@ -211,32 +213,42 @@ export function Dashboard() {
   const [editTicketTypes, setEditTicketTypes] = useState([]);
 
   async function load() {
-    const r = await getMyEventsSummaryRequest();
-    setSummary(r.data);
+    const response = await getMyEventsSummaryRequest();
+    setSummary(response.data);
   }
 
   useEffect(() => {
     let alive = true;
-    (async () => {
+
+    async function run() {
       try {
         setLoading(true);
         await load();
       } finally {
         if (alive) setLoading(false);
       }
-    })();
-    return () => (alive = false);
+    }
+
+    run();
+
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
     return () => {
-      if (bannerPreview?.startsWith("blob:")) URL.revokeObjectURL(bannerPreview);
+      if (bannerPreview?.startsWith("blob:")) {
+        URL.revokeObjectURL(bannerPreview);
+      }
     };
   }, [bannerPreview]);
 
   useEffect(() => {
     return () => {
-      if (eBannerPreview?.startsWith("blob:")) URL.revokeObjectURL(eBannerPreview);
+      if (eBannerPreview?.startsWith("blob:")) {
+        URL.revokeObjectURL(eBannerPreview);
+      }
     };
   }, [eBannerPreview]);
 
@@ -245,18 +257,28 @@ export function Dashboard() {
   const hasEvents = events.length > 0;
 
   const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return events;
-    return events.filter((x) => (x?.event?.title || "").toLowerCase().includes(s));
+    const search = q.trim().toLowerCase();
+
+    if (!search) return events;
+
+    return events.filter((row) =>
+      String(row?.event?.title || "")
+        .toLowerCase()
+        .includes(search)
+    );
   }, [events, q]);
+
+  const canPublish = (insights?.ticketTypes?.length || 0) > 0;
 
   async function openInsights(eventId) {
     try {
       setActiveEventId(eventId);
       setInsights(null);
       setInsightsLoading(true);
-      const r = await getEventSummaryRequest(eventId);
-      setInsights(r.data);
+
+      const response = await getEventSummaryRequest(eventId);
+
+      setInsights(response.data);
     } finally {
       setInsightsLoading(false);
     }
@@ -264,10 +286,11 @@ export function Dashboard() {
 
   async function setStatus(eventId, nextStatus) {
     const status = String(nextStatus || "").toUpperCase().trim();
+
     if (!ALLOWED_STATUS.has(status)) return;
 
     if (status === "PUBLISHED" && !connected) {
-      alert("You need to connect Mercado Pago before publishing events.");
+      alert("Necesitás conectar Mercado Pago antes de publicar eventos.");
       return;
     }
 
@@ -279,9 +302,6 @@ export function Dashboard() {
     }
   }
 
-  /* =========================
-      Create event helpers
-  ========================= */
   function resetCreateForm() {
     setTitle("");
     setCity("");
@@ -290,14 +310,23 @@ export function Dashboard() {
     setEndAt("");
     setBannerUrl("");
     setBannerFile(null);
-    if (bannerPreview?.startsWith("blob:")) URL.revokeObjectURL(bannerPreview);
-    setBannerPreview("");
     setCreateErr("");
     setBannerUploading(false);
 
+    if (bannerPreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(bannerPreview);
+    }
+
+    setBannerPreview("");
+
     setTicketDrafts([
-      { tmpId: uuid(), name: "GENERAL", price: 20, currency: "USD", capacity: 40 },
-      { tmpId: uuid(), name: "VIP", price: 50, currency: "USD", capacity: 40 },
+      {
+        tmpId: uuid(),
+        name: "General",
+        price: 20,
+        currency: "USD",
+        capacity: 40,
+      },
     ]);
   }
 
@@ -305,91 +334,141 @@ export function Dashboard() {
     if (!file) return;
 
     if (!file.type?.startsWith("image/")) {
-      setCreateErr("Please select an image file (PNG/JPG/WebP).");
+      setCreateErr("Seleccioná una imagen válida.");
       return;
     }
+
     if (file.size > 6 * 1024 * 1024) {
-      setCreateErr("Image is too large. Max 6MB.");
+      setCreateErr("La imagen es demasiado pesada. Máximo 6MB.");
       return;
     }
 
     setCreateErr("");
     setBannerFile(file);
     setBannerUrl("");
-    if (bannerPreview?.startsWith("blob:")) URL.revokeObjectURL(bannerPreview);
+
+    if (bannerPreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(bannerPreview);
+    }
+
     setBannerPreview(URL.createObjectURL(file));
   }
 
   function clearBanner() {
     setBannerFile(null);
     setBannerUrl("");
-    if (bannerPreview?.startsWith("blob:")) URL.revokeObjectURL(bannerPreview);
+
+    if (bannerPreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(bannerPreview);
+    }
+
     setBannerPreview("");
   }
 
   function addTicketDraft() {
     setTicketDrafts((prev) => [
       ...prev,
-      { tmpId: uuid(), name: "", price: 0, currency: "USD", capacity: 1 },
+      {
+        tmpId: uuid(),
+        name: "",
+        price: 0,
+        currency: "USD",
+        capacity: 1,
+      },
     ]);
   }
 
   function updateTicketDraft(tmpId, patch) {
-    setTicketDrafts((prev) => prev.map((t) => (t.tmpId === tmpId ? { ...t, ...patch } : t)));
+    setTicketDrafts((prev) =>
+      prev.map((ticket) =>
+        ticket.tmpId === tmpId ? { ...ticket, ...patch } : ticket
+      )
+    );
   }
 
   function removeTicketDraft(tmpId) {
-    setTicketDrafts((prev) => prev.filter((t) => t.tmpId !== tmpId));
+    setTicketDrafts((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((ticket) => ticket.tmpId !== tmpId);
+    });
   }
 
-  async function onCreate(e) {
-    e.preventDefault();
+  async function onCreate(event) {
+    event.preventDefault();
+
     setCreateErr("");
 
-    if (!title.trim() || title.trim().length < 3)
-      return setCreateErr("Title must be at least 3 characters.");
-    if (!startAt) return setCreateErr("Start date is required.");
-    if (!ticketDrafts?.length) return setCreateErr("Add at least 1 ticket type (GENERAL/VIP).");
+    if (!title.trim() || title.trim().length < 3) {
+      setCreateErr("El nombre del evento debe tener al menos 3 caracteres.");
+      return;
+    }
 
-    for (const t of ticketDrafts) {
-      if (!t.name?.trim()) return setCreateErr("Ticket type name is required.");
-      if (!(Number.isFinite(Number(t.price)) && Number(t.price) >= 0))
-        return setCreateErr("Ticket price must be a number ≥ 0.");
-      if (!(Number.isInteger(Number(t.capacity)) && Number(t.capacity) >= 1))
-        return setCreateErr("Capacity must be an integer ≥ 1.");
+    if (!startAt) {
+      setCreateErr("La fecha de inicio es obligatoria.");
+      return;
+    }
+
+    if (!ticketDrafts?.length) {
+      setCreateErr("Agregá al menos un tipo de entrada.");
+      return;
+    }
+
+    for (const ticket of ticketDrafts) {
+      if (!ticket.name?.trim()) {
+        setCreateErr("El nombre del tipo de entrada es obligatorio.");
+        return;
+      }
+
+      if (!Number.isFinite(Number(ticket.price)) || Number(ticket.price) < 0) {
+        setCreateErr("El precio debe ser un número mayor o igual a 0.");
+        return;
+      }
+
+      if (
+        !Number.isInteger(Number(ticket.capacity)) ||
+        Number(ticket.capacity) < 1
+      ) {
+        setCreateErr("La capacidad debe ser un número entero mayor o igual a 1.");
+        return;
+      }
     }
 
     try {
       setCreating(true);
       setBannerUploading(false);
 
-      const startIso = new Date(startAt).toISOString();
-      const endIso = endAt ? new Date(endAt).toISOString() : undefined;
-
-      const evRes = await createEventRequest({
+      const eventResponse = await createEventRequest({
         title: title.trim(),
         city: city.trim() || undefined,
         venue: venue.trim() || undefined,
-        startAt: startIso,
-        endAt: endIso,
+        startAt: new Date(startAt).toISOString(),
+        endAt: endAt ? new Date(endAt).toISOString() : undefined,
         bannerUrl: bannerUrl.trim() || undefined,
       });
 
-      const eventId = evRes?.data?.event?._id;
-      if (!eventId) throw new Error("createEvent did not return event._id");
+      const eventId =
+        eventResponse?.data?.event?._id || eventResponse?.data?.event?.id;
+
+      if (!eventId) {
+        throw new Error("createEvent did not return event._id");
+      }
 
       if (bannerFile) {
         setBannerUploading(true);
+
         const uploadedUrl = await uploadEventBanner(eventId, bannerFile);
-        await updateEventRequest(eventId, { bannerUrl: uploadedUrl });
+
+        await updateEventRequest(eventId, {
+          bannerUrl: uploadedUrl,
+        });
       }
 
-      for (const t of ticketDrafts) {
+      for (const ticket of ticketDrafts) {
         await createTicketTypeRequest(eventId, {
-          name: t.name.trim(),
-          price: Number(t.price),
-          currency: (t.currency || "USD").toUpperCase(),
-          capacity: Number(t.capacity),
+          name: ticket.name.trim(),
+          price: Number(ticket.price),
+          currency: (ticket.currency || "USD").toUpperCase(),
+          capacity: Number(ticket.capacity),
         });
       }
 
@@ -397,16 +476,17 @@ export function Dashboard() {
       resetCreateForm();
       await load();
     } catch (err) {
-      setCreateErr(err?.response?.data?.message || err?.message || "Could not create event.");
+      setCreateErr(
+        err?.response?.data?.message ||
+          err?.message ||
+          "No se pudo crear el evento."
+      );
     } finally {
       setBannerUploading(false);
       setCreating(false);
     }
   }
 
-  /* =========================
-      Edit event modal logic
-  ========================= */
   async function openEditEvent(eventId) {
     try {
       setEditErr("");
@@ -415,37 +495,43 @@ export function Dashboard() {
       setEditLoading(true);
 
       setEBannerFile(null);
-      if (eBannerPreview?.startsWith("blob:")) URL.revokeObjectURL(eBannerPreview);
+
+      if (eBannerPreview?.startsWith("blob:")) {
+        URL.revokeObjectURL(eBannerPreview);
+      }
+
       setEBannerPreview("");
 
-      const evRes = await getEventById(eventId);
-      const ev = evRes?.data?.event;
+      const eventResponse = await getEventById(eventId);
+      const eventData = eventResponse?.data?.event ?? eventResponse?.data;
 
-      setETitle(ev?.title || "");
-      setEDescription(ev?.description || "");
-      setEVenue(ev?.venue || "");
-      setECity(ev?.city || "");
-      setEStartAt(toDatetimeLocal(ev?.startAt));
-      setEEndAt(toDatetimeLocal(ev?.endAt));
-      setEBannerUrl(ev?.bannerUrl || "");
-      setETags(tagsToString(ev?.tags));
+      setETitle(eventData?.title || "");
+      setEDescription(eventData?.description || "");
+      setEVenue(eventData?.venue || "");
+      setECity(eventData?.city || "");
+      setEStartAt(toDatetimeLocal(eventData?.startAt));
+      setEEndAt(toDatetimeLocal(eventData?.endAt));
+      setEBannerUrl(eventData?.bannerUrl || "");
+      setETags(tagsToString(eventData?.tags));
 
-      const ttRes = await listTicketTypesByEventRequest(eventId);
-      const types = ttRes?.data?.ticketTypes || [];
+      const ticketTypesResponse = await listTicketTypesByEventRequest(eventId);
+      const types = ticketTypesResponse?.data?.ticketTypes || [];
 
       setEditTicketTypes(
-        types.map((t) => ({
-          id: t.id || t._id,
-          name: t.name || "",
-          price: Number(t.price ?? 0),
-          currency: (t.currency || "USD").toUpperCase(),
-          capacity: Number(t.capacity ?? 1),
-          soldCount: Number(t.soldCount ?? 0),
+        types.map((ticket) => ({
+          id: ticket.id || ticket._id,
+          name: ticket.name || "",
+          price: Number(ticket.price ?? 0),
+          currency: (ticket.currency || "USD").toUpperCase(),
+          capacity: Number(ticket.capacity ?? 1),
+          soldCount: Number(ticket.soldCount ?? 0),
           isNew: false,
         }))
       );
     } catch (err) {
-      setEditErr(err?.response?.data?.message || "Could not load event for editing.");
+      setEditErr(
+        err?.response?.data?.message || "No se pudo cargar el evento."
+      );
     } finally {
       setEditLoading(false);
     }
@@ -455,40 +541,57 @@ export function Dashboard() {
     if (!file) return;
 
     if (!file.type?.startsWith("image/")) {
-      setEditErr("Please select an image file (PNG/JPG/WebP).");
+      setEditErr("Seleccioná una imagen válida.");
       return;
     }
+
     if (file.size > 6 * 1024 * 1024) {
-      setEditErr("Image is too large. Max 6MB.");
+      setEditErr("La imagen es demasiado pesada. Máximo 6MB.");
       return;
     }
 
     setEditErr("");
     setEBannerFile(file);
-    if (eBannerPreview?.startsWith("blob:")) URL.revokeObjectURL(eBannerPreview);
+
+    if (eBannerPreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(eBannerPreview);
+    }
+
     setEBannerPreview(URL.createObjectURL(file));
   }
 
   function clearEditBannerLocal() {
     setEBannerFile(null);
-    if (eBannerPreview?.startsWith("blob:")) URL.revokeObjectURL(eBannerPreview);
+
+    if (eBannerPreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(eBannerPreview);
+    }
+
     setEBannerPreview("");
   }
 
   async function uploadEditBannerNow() {
-    if (!editEventId) return setEditErr("Missing eventId.");
+    if (!editEventId) {
+      setEditErr("Falta el ID del evento.");
+      return;
+    }
+
     if (!eBannerFile) return;
 
     try {
       setEditErr("");
       setEBannerUploading(true);
 
-      const url = await uploadEventBanner(editEventId, eBannerFile);
+      const uploadedUrl = await uploadEventBanner(editEventId, eBannerFile);
 
-      setEBannerUrl(url);
+      setEBannerUrl(uploadedUrl);
       clearEditBannerLocal();
     } catch (err) {
-      setEditErr(err?.response?.data?.message || err?.message || "Upload failed.");
+      setEditErr(
+        err?.response?.data?.message ||
+          err?.message ||
+          "No se pudo subir la imagen."
+      );
     } finally {
       setEBannerUploading(false);
     }
@@ -510,12 +613,14 @@ export function Dashboard() {
   }
 
   function updateEditTicketType(id, patch) {
-    setEditTicketTypes((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    setEditTicketTypes((prev) =>
+      prev.map((ticket) => (ticket.id === id ? { ...ticket, ...patch } : ticket))
+    );
   }
 
-  async function deleteEditTicketType(t) {
-    if (!t?.isNew && Number(t.soldCount || 0) > 0) {
-      setEditErr("You can’t delete a ticket type with sales.");
+  async function deleteEditTicketType(ticket) {
+    if (!ticket?.isNew && Number(ticket.soldCount || 0) > 0) {
+      setEditErr("No podés eliminar un tipo de entrada que ya tiene ventas.");
       return;
     }
 
@@ -523,15 +628,23 @@ export function Dashboard() {
       setEditSaving(true);
       setEditErr("");
 
-      if (t.isNew) {
-        setEditTicketTypes((prev) => prev.filter((x) => x.id !== t.id));
+      if (ticket.isNew) {
+        setEditTicketTypes((prev) =>
+          prev.filter((item) => item.id !== ticket.id)
+        );
         return;
       }
 
-      await deleteTicketTypeRequest(t.id);
-      setEditTicketTypes((prev) => prev.filter((x) => x.id !== t.id));
+      await deleteTicketTypeRequest(ticket.id);
+
+      setEditTicketTypes((prev) =>
+        prev.filter((item) => item.id !== ticket.id)
+      );
     } catch (err) {
-      setEditErr(err?.response?.data?.message || "Could not delete ticket type.");
+      setEditErr(
+        err?.response?.data?.message ||
+          "No se pudo eliminar el tipo de entrada."
+      );
     } finally {
       setEditSaving(false);
     }
@@ -555,1209 +668,1374 @@ export function Dashboard() {
         tags: stringToTags(eTags),
       });
 
-      for (const t of editTicketTypes) {
-        if (!t.name?.trim()) throw new Error("Ticket type name is required.");
-        if (!Number.isFinite(Number(t.price)) || Number(t.price) < 0)
-          throw new Error("Ticket price must be ≥ 0.");
-        if (!Number.isInteger(Number(t.capacity)) || Number(t.capacity) < 1)
-          throw new Error("Capacity must be ≥ 1.");
-
-        if (!t.isNew && Number(t.capacity) < Number(t.soldCount || 0)) {
-          throw new Error(`Capacity can't be lower than sold (${t.soldCount}) for "${t.name}".`);
+      for (const ticket of editTicketTypes) {
+        if (!ticket.name?.trim()) {
+          throw new Error("El nombre del tipo de entrada es obligatorio.");
         }
 
-        if (t.isNew) {
+        if (!Number.isFinite(Number(ticket.price)) || Number(ticket.price) < 0) {
+          throw new Error("El precio debe ser mayor o igual a 0.");
+        }
+
+        if (
+          !Number.isInteger(Number(ticket.capacity)) ||
+          Number(ticket.capacity) < 1
+        ) {
+          throw new Error("La capacidad debe ser mayor o igual a 1.");
+        }
+
+        if (
+          !ticket.isNew &&
+          Number(ticket.capacity) < Number(ticket.soldCount || 0)
+        ) {
+          throw new Error(
+            `La capacidad no puede ser menor que las ventas (${ticket.soldCount}) para "${ticket.name}".`
+          );
+        }
+
+        if (ticket.isNew) {
           await createTicketTypeRequest(editEventId, {
-            name: t.name.trim(),
-            price: Number(t.price),
-            currency: (t.currency || "USD").toUpperCase(),
-            capacity: Number(t.capacity),
+            name: ticket.name.trim(),
+            price: Number(ticket.price),
+            currency: (ticket.currency || "USD").toUpperCase(),
+            capacity: Number(ticket.capacity),
           });
         } else {
-          await updateTicketTypeRequest(t.id, {
-            name: t.name.trim(),
-            price: Number(t.price),
-            currency: (t.currency || "USD").toUpperCase(),
-            capacity: Number(t.capacity),
+          await updateTicketTypeRequest(ticket.id, {
+            name: ticket.name.trim(),
+            price: Number(ticket.price),
+            currency: (ticket.currency || "USD").toUpperCase(),
+            capacity: Number(ticket.capacity),
           });
         }
       }
 
       await load();
-      if (activeEventId === editEventId) await openInsights(editEventId);
+
+      if (activeEventId === editEventId) {
+        await openInsights(editEventId);
+      }
 
       setEditEventOpen(false);
     } catch (err) {
-      setEditErr(err?.response?.data?.message || err?.message || "Could not save changes.");
+      setEditErr(
+        err?.response?.data?.message ||
+          err?.message ||
+          "No se pudieron guardar los cambios."
+      );
     } finally {
       setEditSaving(false);
     }
   }
 
-  const canPublish = (insights?.ticketTypes?.length || 0) > 0;
-
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      {/* TOP BAR */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="text-xs uppercase tracking-widest text-white/40">
-            Admin <span className="text-white/20">›</span> Dashboard
-          </div>
-          <h1 className="mt-2 text-4xl font-extrabold tracking-tight md:text-5xl">
-            Dashboard Overview
-          </h1>
-          <p className="mt-2 text-sm text-white/60">
-            Here’s what’s happening with your events today.
-          </p>
-        </div>
+    <div className="ticketify-dashboard bg-[#f3faff] text-[#001f29]">
+      <DashboardStyles />
 
-        <div className="flex w-full items-center gap-2 md:w-auto">
-          <div className="relative w-full md:w-[320px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search events..."
-              className="h-11 rounded-2xl border-white/10 bg-white/5 pl-10 text-white placeholder:text-white/30"
-            />
+      <main className="tf-container px-4 pb-24 pt-10">
+        <section className="mb-8 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="text-[32px] font-extrabold leading-10 tracking-[-0.01em] text-[#001f29] md:text-[40px] md:leading-[48px]">
+              Dashboard del vendedor
+            </h1>
+
+            <p className="mt-2 max-w-xl text-[18px] leading-7 text-[#5b403f]">
+              Gestioná tus eventos, ventas e insights desde un solo lugar.
+            </p>
           </div>
 
-          <Button
-            onClick={() => {
-              resetCreateForm();
-              setCreateOpen(true);
-            }}
-            className="h-11 rounded-2xl bg-violet-600 hover:bg-violet-500"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create Event
-          </Button>
-        </div>
-      </div>
-            {!mpLoading && !connected && (
-              <div className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex items-center justify-between">
-                <div className="text-sm text-amber-200">
-                  You haven’t connected Mercado Pago yet. You won’t receive payments.
-                </div>
+          <div className="flex w-full flex-col gap-4 sm:flex-row md:w-auto">
+            <div className="relative w-full sm:w-80">
+              <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[#5b403f]">
+                search
+              </span>
 
-                <Button
-                  className="rounded-2xl bg-violet-600 hover:bg-violet-500"
-                  onClick={connect}
-                >
-                  Connect
-                </Button>
-              </div>
-            )}
-      {/* KPI ROW */}
-      <div className="mt-8 grid gap-4 md:grid-cols-3">
-        <KpiCard
-          loading={loading}
-          icon={<DollarSign className="h-5 w-5" />}
-          title="Total Revenue"
-          value={money(totals.totalRevenuePaid)}
-          hint={hasEvents ? "Paid orders only" : "Create your first event to start earning"}
-        />
-        <KpiCard
-          loading={loading}
-          icon={<Ticket className="h-5 w-5" />}
-          title="Tickets Sold"
-          value={number(totals.totalTicketsSoldPaid)}
-          hint={hasEvents ? "Paid tickets only" : "No events yet"}
-        />
-        <KpiCard
-          loading={loading}
-          icon={<ClipboardList className="h-5 w-5" />}
-          title="Orders Paid"
-          value={number(totals.ordersPaid)}
-          hint={`Pending: ${number(totals.ordersPending)} • Expired: ${number(totals.ordersExpired)}`}
-        />
-      </div>
-
-      {/* EMPTY STATE */}
-      {!loading && !hasEvents ? (
-        <Card className="mt-6 border-white/10 bg-white/5">
-          <CardContent className="p-10">
-            <div className="flex flex-col items-center text-center">
-              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-violet-600/15 ring-1 ring-violet-500/25">
-                <Sparkles className="h-6 w-6 text-violet-200" />
-              </div>
-              <h2 className="mt-5 text-2xl font-bold">No events created yet</h2>
-              <p className="mt-2 max-w-md text-sm text-white/60">
-                Create your first event to publish tickets, track sales, and manage attendees.
-              </p>
-              <Button
-                className="mt-6 h-11 rounded-2xl bg-violet-600 hover:bg-violet-500"
-                onClick={() => {
-                  resetCreateForm();
-                  setCreateOpen(true);
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Create Event
-              </Button>
+              <input
+                value={q}
+                onChange={(event) => setQ(event.target.value)}
+                className="h-12 w-full rounded-xl border border-[#e4bdbc] bg-white pl-12 pr-4 text-[#001f29] outline-none transition-all placeholder:text-[#5b403f]/70 focus:border-[#215d7d] focus:ring-2 focus:ring-[#215d7d]/20"
+                placeholder="Buscar eventos publicados"
+                type="text"
+              />
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          {/* EVENTS TABLE + INSIGHTS */}
-          <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
-            <Card className="border-white/10 bg-white/5">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold">Your Events</div>
-                    <div className="mt-1 text-sm text-white/60">
-                      Click an event to view insights.
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                    asChild
-                  >
-                    <Link to="/events">
-                      View marketplace <ArrowUpRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
-                </div>
 
-                <Separator className="my-5 bg-white/10" />
+            <button
+              type="button"
+              onClick={() => {
+                resetCreateForm();
+                setCreateOpen(true);
+              }}
+              className="flex h-12 items-center justify-center gap-2 rounded-xl bg-[#b20024] px-8 text-[16px] font-bold text-white shadow-lg transition-all hover:bg-[#d62839] active:scale-[0.98]"
+            >
+              <span className="material-symbols-outlined">add</span>
+              Crear evento
+            </button>
+          </div>
+        </section>
+
+        {!mpLoading && !connected ? (
+          <section className="mb-8 flex flex-col items-center justify-between gap-4 rounded-2xl border border-[#d62839] bg-[#d62839]/10 p-4 md:flex-row">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#d62839] text-white">
+                <span className="material-symbols-outlined">
+                  account_balance_wallet
+                </span>
+              </div>
+
+              <p className="text-[16px] font-bold leading-6 text-[#001f29]">
+                Conectá Mercado Pago para recibir tus pagos de forma segura.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={connect}
+              className="rounded-lg bg-[#d62839] px-6 py-3 text-[14px] font-bold leading-5 tracking-[0.05em] text-white transition-all hover:bg-[#b20024] active:scale-[0.98]"
+            >
+              Conectar ahora
+            </button>
+          </section>
+        ) : null}
+
+        <section className="mb-20 grid grid-cols-1 gap-6 md:grid-cols-3">
+          <KpiCard
+            loading={loading}
+            icon="payments"
+            label="Total ganado"
+            value={money(totals.totalRevenuePaid)}
+            trend="+12.5%"
+            tone="blue"
+          />
+
+          <KpiCard
+            loading={loading}
+            icon="confirmation_number"
+            label="Total vendido"
+            value={`${number(totals.totalTicketsSoldPaid)} tickets`}
+            trend="+8.2%"
+            tone="red"
+          />
+
+          <KpiCard
+            loading={loading}
+            icon="check_circle"
+            label="Órdenes pagadas"
+            value={number(totals.ordersPaid)}
+            trend="Mes actual"
+            tone="blue"
+            mutedTrend
+          />
+        </section>
+
+        {!loading && !hasEvents ? (
+          <section className="rounded-2xl border border-[#baeaff] bg-white p-10 text-center shadow-sm">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d8f2ff] text-[#215d7d]">
+              <span className="material-symbols-outlined">auto_awesome</span>
+            </div>
+
+            <h2 className="mt-5 text-[24px] font-bold leading-8 text-[#001f29]">
+              Todavía no creaste eventos
+            </h2>
+
+            <p className="mx-auto mt-2 max-w-md text-[16px] leading-6 text-[#5b403f]">
+              Creá tu primer evento para publicar entradas, seguir ventas y
+              administrar asistentes.
+            </p>
+
+            <button
+              type="button"
+              className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#d62839] px-8 text-[16px] font-bold text-white shadow-lg transition-all hover:bg-[#b20024] active:scale-[0.98]"
+              onClick={() => {
+                resetCreateForm();
+                setCreateOpen(true);
+              }}
+            >
+              <span className="material-symbols-outlined">add</span>
+              Crear evento
+            </button>
+          </section>
+        ) : (
+          <section className="grid grid-cols-1 gap-8 xl:grid-cols-3">
+            <div className="xl:col-span-2">
+              <div className="mb-6 flex items-center justify-between">
+                <h2 className="text-[24px] font-bold leading-8 text-[#001f29]">
+                  Eventos activos
+                </h2>
+
+                <Link
+                  to="/my-events"
+                  className="text-[14px] font-bold leading-5 tracking-[0.05em] text-[#b20024] hover:underline"
+                >
+                  Ver todos
+                </Link>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-[#baeaff] bg-white shadow-sm">
+                <div className="hidden grid-cols-[1.4fr_0.7fr_0.7fr_0.8fr_0.5fr] gap-4 border-b border-[#e4bdbc] bg-[#e5f6ff] px-6 py-4 text-[14px] font-bold leading-5 tracking-[0.05em] text-[#5b403f] md:grid">
+                  <span>Evento</span>
+                  <span>Estado</span>
+                  <span>Tickets</span>
+                  <span className="text-right">Ingresos</span>
+                  <span />
+                </div>
 
                 {loading ? (
-                  <div className="grid gap-3">
-                    <Skeleton className="h-10 w-full rounded-2xl bg-white/10" />
-                    <Skeleton className="h-10 w-full rounded-2xl bg-white/10" />
-                    <Skeleton className="h-10 w-full rounded-2xl bg-white/10" />
+                  <div className="space-y-4 p-6">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div
+                        key={index}
+                        className="h-16 animate-pulse rounded-xl bg-[#d8f2ff]"
+                      />
+                    ))}
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="p-10 text-center text-[#5b403f]">
+                    No hay eventos que coincidan con tu búsqueda.
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-white/10 bg-black/20">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="border-white/10">
-                          <TableHead className="text-white/60">Event</TableHead>
-                          <TableHead className="text-white/60">Status</TableHead>
-                          <TableHead className="text-white/60">Start</TableHead>
-                          <TableHead className="text-right text-white/60">Tickets</TableHead>
-                          <TableHead className="text-right text-white/60">Revenue</TableHead>
-                          <TableHead className="text-right text-white/60">Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
+                  <div className="divide-y divide-[#e4bdbc]">
+                    {filtered.map((row) => {
+                      const event = row.event;
+                      const kpis = row.kpis || {};
+                      const eventId = getEventId(event);
+                      const sold = Number(kpis.totalTicketsSoldPaid || 0);
+                      const totalCapacity = Number(
+                        kpis.totalCapacity || event?.capacity || 0
+                      );
+                      const isActive = activeEventId === eventId;
 
-                      <TableBody>
-                        {filtered.map((row) => {
-                          const e = row.event;
-                          const k = row.kpis;
-                          const isActive = activeEventId === e.id;
-
-                          return (
-                            <TableRow
-                              key={e.id}
-                              className={[
-                                "border-white/10 cursor-pointer",
-                                isActive ? "bg-white/5" : "hover:bg-white/5",
-                              ].join(" ")}
-                              onClick={() => openInsights(e.id)}
-                            >
-                              <TableCell className="font-medium">
-                                <div className="flex flex-col">
-                                  <span className="text-white">{e.title}</span>
-                                  <span className="text-xs text-white/45">
-                                    Created: {formatDateTime(e.createdAt)}
-                                  </span>
-                                </div>
-                              </TableCell>
-
-                              <TableCell>
-                                <Badge
-                                  className={[
-                                    "rounded-full px-3 py-1 border",
-                                    statusBadge(e.status),
-                                  ].join(" ")}
-                                >
-                                  {e.status}
-                                </Badge>
-                              </TableCell>
-
-                              <TableCell className="text-white/75">
-                                {formatDateTime(e.startAt)}
-                              </TableCell>
-
-                              <TableCell className="text-right text-white/85">
-                                {number(k.totalTicketsSoldPaid)}
-                              </TableCell>
-
-                              <TableCell className="text-right text-white/85">
-                                {money(k.totalRevenuePaid)}
-                              </TableCell>
-
-                              <TableCell className="text-right">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      className="h-9 w-9 rounded-xl border-white/10 bg-white/5 p-0 hover:bg-white/10"
-                                      onClick={(ev) => ev.stopPropagation()}
-                                    >
-                                      <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-
-                                  <DropdownMenuContent
-                                    className="border-white/10 bg-black/85 text-white"
-                                    onClick={(ev) => ev.stopPropagation()}
-                                  >
-                                    <DropdownMenuItem onClick={() => openInsights(e.id)}>
-                                      View Insights
-                                    </DropdownMenuItem>
-
-                                    <DropdownMenuItem onClick={() => openEditEvent(e.id)}>
-                                      Edit event
-                                    </DropdownMenuItem>
-
-                                    <DropdownMenuItem asChild>
-                                      <Link to={`/check-in?eventId=${e.id}`}>
-                                        Open Check-In
-                                      </Link>
-                                    </DropdownMenuItem>
-
-                                    {e.status !== "PUBLISHED" ? (
-                                      <DropdownMenuItem onClick={() => setStatus(e.id, "PUBLISHED")}>
-                                        Publish
-                                      </DropdownMenuItem>
-                                    ) : (
-                                      <DropdownMenuItem onClick={() => setStatus(e.id, "DRAFT")}>
-                                        Back to Draft
-                                      </DropdownMenuItem>
-                                    )}
-
-                                    {e.status !== "ENDED" ? (
-                                      <DropdownMenuItem onClick={() => setStatus(e.id, "ENDED")}>
-                                        Mark as Ended
-                                      </DropdownMenuItem>
-                                    ) : null}
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-
-                        {filtered.length === 0 ? (
-                          <TableRow className="border-white/10">
-                            <TableCell colSpan={6} className="py-10 text-center text-sm text-white/50">
-                              No events match your search.
-                            </TableCell>
-                          </TableRow>
-                        ) : null}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* INSIGHTS PANEL */}
-            <Card className="border-white/10 bg-white/5">
-              <CardContent className="p-6">
-                <div className="text-lg font-semibold">Event Insights</div>
-                <div className="mt-1 text-sm text-white/60">Ticket types performance and sales.</div>
-
-                <Separator className="my-5 bg-white/10" />
-
-                {!activeEventId ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-white/60">
-                    Select an event to see details.
-                  </div>
-                ) : insightsLoading ? (
-                  <div className="grid gap-3">
-                    <Skeleton className="h-20 w-full rounded-2xl bg-white/10" />
-                    <Skeleton className="h-20 w-full rounded-2xl bg-white/10" />
-                    <Skeleton className="h-20 w-full rounded-2xl bg-white/10" />
-                  </div>
-                ) : insights ? (
-                  <div className="space-y-4">
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm font-semibold text-white">{insights.event.title}</div>
-                        <Badge
+                      return (
+                        <button
+                          key={eventId}
+                          type="button"
+                          onClick={() => openInsights(eventId)}
                           className={[
-                            "rounded-full px-3 py-1 border",
-                            statusBadge(insights.event.status),
+                            "grid w-full grid-cols-1 gap-4 px-6 py-5 text-left transition-colors hover:bg-[#f3faff] md:grid-cols-[1.4fr_0.7fr_0.7fr_0.8fr_0.5fr] md:items-center",
+                            isActive ? "bg-[#e5f6ff]" : "bg-white",
                           ].join(" ")}
                         >
-                          {insights.event.status}
-                        </Badge>
-                      </div>
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={safeEventImage(event?.bannerUrl)}
+                              alt={event?.title || "Evento"}
+                              className="h-11 w-11 rounded-lg object-cover"
+                            />
 
-                      <div className="mt-2 text-xs text-white/50">
-                        Start: {formatDateTime(insights.event.startAt)}
-                        {insights.event.endAt ? ` • End: ${formatDateTime(insights.event.endAt)}` : ""}
-                      </div>
+                            <div>
+                              <p className="font-bold text-[#001f29]">
+                                {event?.title || "Evento"}
+                              </p>
 
-                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                        <MiniStat label="Revenue (paid)" value={money(insights.kpis.totalRevenuePaid)} />
-                        <MiniStat label="Tickets (paid)" value={number(insights.kpis.totalTicketsSoldPaid)} />
-                        <MiniStat label="Orders paid" value={number(insights.kpis.ordersPaid)} />
-                        <MiniStat label="Avg order" value={money(insights.kpis.avgOrderValuePaid)} />
-                      </div>
+                              <p className="text-xs text-[#5b403f]">
+                                {formatDateTime(event?.startAt)}
+                              </p>
+                            </div>
+                          </div>
 
-                      <div className="mt-4 grid gap-3">
-                        {insights.event.status !== "PUBLISHED" ? (
-                          <>
-                            <Button
-                              className="h-11 rounded-2xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50"
-                              disabled={!canPublish}
-                              onClick={() => setStatus(insights.event.id, "PUBLISHED")}
+                          <div>
+                            <span
+                              className={[
+                                "rounded-full px-3 py-1 text-xs font-bold",
+                                statusClass(event?.status),
+                              ].join(" ")}
                             >
-                              Publish event
-                            </Button>
-                            {!canPublish ? (
-                              <div className="text-xs text-amber-200/80">
-                                Add at least 1 ticket type (GENERAL/VIP) before publishing.
-                              </div>
-                            ) : null}
-                          </>
-                        ) : (
-                          <Button
-                            className="h-11 rounded-2xl bg-zinc-800 hover:bg-zinc-700"
-                            onClick={() => setStatus(insights.event.id, "ENDED")}
-                          >
-                            End event
-                          </Button>
-                        )}
+                              {statusLabel(event?.status)}
+                            </span>
+                          </div>
 
-                        <Button
-                          variant="outline"
-                          className="h-11 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                          onClick={() => openEditEvent(insights.event.id)}
-                        >
-                          Edit event (details + tickets)
-                        </Button>
+                          <p className="text-[#5b403f]">
+                            {number(sold)}{" "}
+                            {totalCapacity ? `/ ${number(totalCapacity)}` : ""}
+                          </p>
 
-                        <Button
-                          asChild
-                          className="h-11 rounded-2xl bg-emerald-600 hover:bg-emerald-500"
-                        >
-                          <Link to={`/check-in?eventId=${insights.event.id}`}>
-                            <ScanLine className="mr-2 h-4 w-4" />
-                            Open Check-In
-                          </Link>
-                        </Button>
+                          <p className="font-bold text-[#001f29] md:text-right">
+                            {money(kpis.totalRevenuePaid)}
+                          </p>
+
+                          <span className="flex items-center gap-1 font-bold text-[#215d7d] md:justify-end">
+                            Insights
+                            <span className="material-symbols-outlined text-sm">
+                              chevron_right
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <aside className="xl:col-span-1">
+              <div className="mb-6 flex items-center justify-between">
+                <h2 className="text-[24px] font-bold leading-8 text-[#001f29]">
+                  Resumen de evento
+                </h2>
+
+                <span className="material-symbols-outlined text-[#5b403f]">
+                  info
+                </span>
+              </div>
+
+              <div className="sticky top-28 rounded-3xl bg-[#001f29] p-8 text-white shadow-xl">
+                {!activeEventId ? (
+                  <div>
+                    <p className="text-[14px] font-semibold uppercase leading-5 tracking-[0.05em] text-[#baeaff]/70">
+                      Seleccioná un evento
+                    </p>
+
+                    <p className="mt-4 text-[#dff4ff]">
+                      Hacé click en un evento de la tabla para ver ingresos,
+                      tickets vendidos y performance por tipo de entrada.
+                    </p>
+                  </div>
+                ) : insightsLoading ? (
+                  <div className="space-y-4">
+                    <div className="h-8 animate-pulse rounded bg-white/10" />
+                    <div className="h-20 animate-pulse rounded bg-white/10" />
+                    <div className="h-20 animate-pulse rounded bg-white/10" />
+                  </div>
+                ) : insights ? (
+                  <>
+                    <div className="mb-8">
+                      <p className="text-[14px] font-semibold uppercase leading-5 tracking-[0.05em] text-[#baeaff]/70">
+                        Total de ingresos
+                      </p>
+
+                      <h3 className="mt-2 text-[40px] font-light leading-tight">
+                        {money(insights.kpis?.totalRevenuePaid)}
+                      </h3>
+
+                      <div className="mt-4 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[#fd647f]">
+                          shopping_cart
+                        </span>
+
+                        <span className="font-bold">
+                          {number(insights.kpis?.totalTicketsSoldPaid)} tickets
+                          pagados
+                        </span>
                       </div>
                     </div>
 
-                    <div className="text-xs uppercase tracking-widest text-white/40">Ticket Types</div>
-
-                    {insights.ticketTypes?.length ? (
-                      <div className="grid gap-3">
-                        {insights.ticketTypes.map((t) => {
-                          const cap = Number(t.capacity || 0);
-                          const sold = Number(t.soldCount || 0);
-                          const remaining = Number(t.remaining ?? t.available ?? 0);
-                          const pct = cap > 0 ? Math.round((sold / cap) * 100) : 0;
+                    <div className="space-y-6">
+                      {insights.ticketTypes?.length ? (
+                        insights.ticketTypes.map((ticketType) => {
+                          const capacity = Number(ticketType.capacity || 0);
+                          const soldCount = Number(ticketType.soldCount || 0);
+                          const percent =
+                            capacity > 0
+                              ? Math.round((soldCount / capacity) * 100)
+                              : 0;
 
                           return (
-                            <div key={t.id} className="rounded-2xl border border-white/10 bg-black/20 p-5">
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="text-sm font-semibold">{t.name}</div>
-                                <div className="text-sm text-white/80">
-                                  {money(t.price)} <span className="text-white/40">/ {t.currency || "USD"}</span>
-                                </div>
+                            <div key={ticketType.id || ticketType._id}>
+                              <div className="mb-2 flex justify-between">
+                                <span className="font-semibold">
+                                  {ticketType.name}
+                                </span>
+                                <span className="font-bold">{percent}%</span>
                               </div>
 
-                              <div className="mt-2 text-xs text-white/50">
-                                Capacity: {number(t.capacity)} • Remaining: {number(remaining)}
-                              </div>
-
-                              <div className="mt-4">
-                                <div className="mb-2 flex items-center justify-between text-xs text-white/50">
-                                  <span>Sold: {number(sold)}</span>
-                                  <span>{pct}%</span>
-                                </div>
-                                <Progress value={pct} className="h-2 rounded-full" />
+                              <div className="h-2 w-full overflow-hidden rounded-full bg-[#baeaff]/20">
+                                <div
+                                  className="h-full rounded-full bg-[#d62839]"
+                                  style={{ width: `${percent}%` }}
+                                />
                               </div>
                             </div>
                           );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-white/60">
-                        No ticket types yet. Create some in the editor.
-                      </div>
-                    )}
-                  </div>
+                        })
+                      ) : (
+                        <p className="text-sm text-[#dff4ff]/80">
+                          Este evento todavía no tiene tipos de ticket.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-10 grid gap-3">
+                      {insights.event?.status !== "PUBLISHED" ? (
+                        <button
+                          type="button"
+                          disabled={!canPublish}
+                          onClick={() =>
+                            setStatus(getEventId(insights.event), "PUBLISHED")
+                          }
+                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#d62839] py-4 font-bold text-white transition-colors hover:bg-[#b20024] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Publicar evento
+                          <span className="material-symbols-outlined">
+                            publish
+                          </span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setStatus(getEventId(insights.event), "ENDED")
+                          }
+                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#3e7697] py-4 font-bold text-white transition-colors hover:bg-[#215d7d]"
+                        >
+                          Finalizar evento
+                          <span className="material-symbols-outlined">
+                            event_busy
+                          </span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => openEditEvent(getEventId(insights.event))}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#baeaff]/30 py-4 font-bold transition-colors hover:bg-white/10"
+                      >
+                        Editar evento
+                        <span className="material-symbols-outlined">edit</span>
+                      </button>
+
+                      <Link
+                        to={`/check-in?eventId=${getEventId(insights.event)}`}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#baeaff]/30 py-4 font-bold transition-colors hover:bg-white/10"
+                      >
+                        Abrir check-in
+                        <span className="material-symbols-outlined">
+                          qr_code_scanner
+                        </span>
+                      </Link>
+                    </div>
+                  </>
                 ) : (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-white/60">
-                    Could not load insights.
-                  </div>
+                  <p className="text-[#dff4ff]/80">
+                    No se pudieron cargar los insights.
+                  </p>
                 )}
-              </CardContent>
-            </Card>
-          </div>
-        </>
-      )}
+              </div>
+            </aside>
+          </section>
+        )}
+      </main>
 
-      {/* =========================
-          CREATE EVENT MODAL
-      ========================= */}
-      <Dialog.Root
+      <CreateEventModal
         open={createOpen}
-        onOpenChange={(v) => {
-          setCreateOpen(v);
-          if (!v) resetCreateForm();
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-          <Dialog.Content
-            className="
-              fixed left-1/2 top-1/2 z-50
-              w-[92vw] max-w-lg
-              -translate-x-1/2 -translate-y-1/2
-              rounded-3xl border border-white/10
-              bg-[#0b0812]/95 p-6 shadow-2xl
-              max-h-[85vh] overflow-y-auto
-            "
-          >
-            <Dialog.Title className="sr-only">Create event</Dialog.Title>
-            <Dialog.Description className="sr-only">
-              Create an event and optionally upload a banner image.
-            </Dialog.Description>
+        setOpen={setCreateOpen}
+        resetCreateForm={resetCreateForm}
+        onCreate={onCreate}
+        mpLoading={mpLoading}
+        connected={connected}
+        connect={connect}
+        title={title}
+        setTitle={setTitle}
+        city={city}
+        setCity={setCity}
+        venue={venue}
+        setVenue={setVenue}
+        startAt={startAt}
+        setStartAt={setStartAt}
+        endAt={endAt}
+        setEndAt={setEndAt}
+        bannerUrl={bannerUrl}
+        setBannerUrl={setBannerUrl}
+        bannerFile={bannerFile}
+        setBannerFile={setBannerFile}
+        bannerPreview={bannerPreview}
+        setBannerPreview={setBannerPreview}
+        onPickBannerFile={onPickBannerFile}
+        clearBanner={clearBanner}
+        ticketDrafts={ticketDrafts}
+        addTicketDraft={addTicketDraft}
+        updateTicketDraft={updateTicketDraft}
+        removeTicketDraft={removeTicketDraft}
+        createErr={createErr}
+        creating={creating}
+        bannerUploading={bannerUploading}
+      />
 
-            {!mpLoading && !connected && (
-              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 mb-5">
-                You need to connect Mercado Pago to receive payments.
-                <div className="mt-2">
-                  <Button
-                    type="button"
-                    className="rounded-2xl bg-violet-600 hover:bg-violet-500"
-                    onClick={connect}
-                  >
-                    Connect Mercado Pago
-                  </Button>
-                </div>
-              </div>
-            )}
+      <EditEventModal
+        open={editEventOpen}
+        setOpen={setEditEventOpen}
+        editLoading={editLoading}
+        editSaving={editSaving}
+        editErr={editErr}
+        setEditErr={setEditErr}
+        editEventId={editEventId}
+        setEditEventId={setEditEventId}
+        eTitle={eTitle}
+        setETitle={setETitle}
+        eDescription={eDescription}
+        setEDescription={setEDescription}
+        eVenue={eVenue}
+        setEVenue={setEVenue}
+        eCity={eCity}
+        setECity={setECity}
+        eStartAt={eStartAt}
+        setEStartAt={setEStartAt}
+        eEndAt={eEndAt}
+        setEEndAt={setEEndAt}
+        eBannerUrl={eBannerUrl}
+        setEBannerUrl={setEBannerUrl}
+        eTags={eTags}
+        setETags={setETags}
+        eBannerFile={eBannerFile}
+        setEBannerFile={setEBannerFile}
+        eBannerPreview={eBannerPreview}
+        setEBannerPreview={setEBannerPreview}
+        eBannerUploading={eBannerUploading}
+        onPickEditBannerFile={onPickEditBannerFile}
+        clearEditBannerLocal={clearEditBannerLocal}
+        uploadEditBannerNow={uploadEditBannerNow}
+        editTicketTypes={editTicketTypes}
+        addEditTicketType={addEditTicketType}
+        updateEditTicketType={updateEditTicketType}
+        deleteEditTicketType={deleteEditTicketType}
+        saveEditEvent={saveEditEvent}
+      />
+    </div>
+  );
+}
 
-            {!mpLoading && connected && (
-              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-                Mercado Pago connected. You will receive payments here ✅
-              </div>
-            )}
+function CreateEventModal({
+  open,
+  setOpen,
+  resetCreateForm,
+  onCreate,
+  mpLoading,
+  connected,
+  connect,
+  title,
+  setTitle,
+  city,
+  setCity,
+  venue,
+  setVenue,
+  startAt,
+  setStartAt,
+  endAt,
+  setEndAt,
+  bannerUrl,
+  setBannerUrl,
+  bannerFile,
+  setBannerFile,
+  bannerPreview,
+  setBannerPreview,
+  onPickBannerFile,
+  clearBanner,
+  ticketDrafts,
+  addTicketDraft,
+  updateTicketDraft,
+  removeTicketDraft,
+  createErr,
+  creating,
+  bannerUploading,
+}) {
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(value) => {
+        setOpen(value);
+        if (!value) resetCreateForm();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-[#001f29]/40 backdrop-blur-md" />
 
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="text-xs uppercase tracking-widest text-violet-300">
-                  Create Event
-                </div>
-                <div className="mt-2 text-2xl font-extrabold tracking-tight">
-                  New event (DRAFT)
-                </div>
-              </div>
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[94vw] max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <Dialog.Title className="sr-only">Crear evento</Dialog.Title>
+          <Dialog.Description className="sr-only">
+            Completa los detalles del evento y los tipos de entrada.
+          </Dialog.Description>
 
-              <Dialog.Close className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white">
-                ✕
-              </Dialog.Close>
+          <header className="flex items-start justify-between border-b border-[#e4bdbc] p-6">
+            <div>
+              <h2 className="text-[32px] font-extrabold leading-10 tracking-[-0.01em] text-[#001f29]">
+                Crear evento
+              </h2>
+
+              <p className="mt-1 text-[16px] leading-6 text-[#5b403f]">
+                Completa los detalles para publicar tu próximo gran evento.
+              </p>
             </div>
 
-            <Separator className="my-5 bg-white/10" />
+            <Dialog.Close className="grid h-10 w-10 place-items-center rounded-full text-[#001f29] transition-colors hover:bg-[#e5f6ff]">
+              <span className="material-symbols-outlined">close</span>
+            </Dialog.Close>
+          </header>
 
-            <form onSubmit={onCreate} className="grid gap-4">
-              <div className="grid gap-2">
-                <label className="text-xs uppercase tracking-widest text-white/60">
-                  Title
-                </label>
-                <Input
-                  className="h-12 rounded-2xl border-white/10 bg-white/5 text-white placeholder:text-white/30"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Festival de primavera 2026"
-                />
+          <div className="custom-scrollbar flex-1 overflow-y-auto p-6 md:p-8">
+            {!mpLoading && !connected ? (
+              <div className="mb-6 rounded-xl border border-[#d62839] bg-[#d62839]/10 p-4">
+                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-full bg-[#d62839] text-white">
+                      <span className="material-symbols-outlined">
+                        account_balance_wallet
+                      </span>
+                    </div>
+
+                    <p className="text-[14px] font-bold leading-5 tracking-[0.05em] text-[#001f29]">
+                      Conectá Mercado Pago para recibir tus pagos.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={connect}
+                    className="rounded-lg bg-[#d62839] px-5 py-2.5 text-[14px] font-bold leading-5 tracking-[0.05em] text-white transition-all hover:bg-[#b20024] active:scale-[0.98]"
+                  >
+                    Conectar ahora
+                  </button>
+                </div>
               </div>
+            ) : null}
 
-              <div className="grid gap-2">
-                <label className="text-xs uppercase tracking-widest text-white/60">
-                  Event image (optional)
-                </label>
+            <form id="create-event-form" onSubmit={onCreate} className="space-y-8">
+              <div className="grid grid-cols-1 gap-8 md:grid-cols-12">
+                <div className="md:col-span-5">
+                  <label className="mb-3 block text-[14px] font-semibold uppercase leading-5 tracking-[0.08em] text-[#5b403f]">
+                    Imagen del evento
+                  </label>
 
-                <div className="grid gap-3">
-                  {bannerPreview || bannerUrl ? (
-                    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30">
-                      <img
-                        src={bannerPreview || bannerUrl}
-                        alt="Event banner preview"
-                        className="h-40 w-full object-cover opacity-90"
-                        onError={() => {
-                          if (!bannerPreview) setCreateErr("Invalid image URL.");
-                        }}
-                      />
+                  <div className="group relative aspect-square overflow-hidden rounded-xl border-2 border-dashed border-[#e4bdbc] bg-[#d8f2ff]">
+                    <img
+                      src={
+                        bannerPreview ||
+                        bannerUrl ||
+                        "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?auto=format&fit=crop&w=1200&q=80"
+                      }
+                      alt="Vista previa del evento"
+                      className="absolute inset-0 h-full w-full object-cover opacity-55 transition-transform duration-500 group-hover:scale-105"
+                    />
+
+                    <div className="absolute inset-0 bg-[#001f29]/15" />
+
+                    <div className="relative z-10 flex h-full flex-col items-center justify-center p-6 text-center">
+                      <span className="material-symbols-outlined mb-2 text-5xl text-[#b20024]">
+                        add_a_photo
+                      </span>
+
+                      <p className="text-[16px] font-bold leading-6 text-[#001f29]">
+                        Cargar imagen
+                      </p>
+
+                      <p className="mt-1 text-xs text-[#5b403f]">
+                        Recomendado: 1080x1080px
+                      </p>
+                    </div>
+
+                    <div className="absolute bottom-4 left-0 right-0 z-20 flex justify-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          document
+                            .getElementById("dashboard-create-banner")
+                            ?.click()
+                        }
+                        disabled={creating || bannerUploading}
+                        className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-[#001f29] shadow-sm transition-colors hover:bg-[#f3faff] disabled:opacity-60"
+                      >
+                        Cargar imagen
+                      </button>
+
                       <button
                         type="button"
                         onClick={clearBanner}
-                        className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-xl border border-white/10 bg-black/50 px-3 py-1.5 text-xs text-white/80 hover:bg-black/70"
+                        disabled={
+                          creating ||
+                          bannerUploading ||
+                          (!bannerFile && !bannerPreview && !bannerUrl)
+                        }
+                        className="rounded-lg bg-[#ba1a1a] px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#93000a] disabled:opacity-60"
                       >
-                        <X className="h-4 w-4" /> Remove
+                        Eliminar
                       </button>
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <div className="flex items-center gap-3 text-sm text-white/70">
-                        <div className="grid h-10 w-10 place-items-center rounded-2xl bg-white/5 ring-1 ring-white/10">
-                          <ImageIcon className="h-5 w-5 text-white/70" />
-                        </div>
-                        <div>
-                          <div className="font-semibold text-white/85">
-                            Add a banner image
-                          </div>
-                          <div className="text-xs text-white/45">
-                            Pick a file (uploads after Create) or paste a URL.
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  </div>
 
-                  <Input
-                    className="h-12 rounded-2xl border-white/10 bg-white/5 text-white placeholder:text-white/30"
-                    value={bannerUrl}
-                    onChange={(e) => {
-                      setBannerUrl(e.target.value);
-                      if (bannerFile) setBannerFile(null);
-                      if (bannerPreview?.startsWith("blob:")) URL.revokeObjectURL(bannerPreview);
-                      setBannerPreview("");
-                    }}
-                    placeholder="https://... (bannerUrl)"
+                  <input
+                    id="dashboard-create-banner"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) =>
+                      onPickBannerFile(event.target.files?.[0] || null)
+                    }
                   />
 
-                  <div className="grid gap-2">
-                    <input
-                      id="banner-file"
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => onPickBannerFile(e.target.files?.[0] || null)}
+                  <input
+                    value={bannerUrl}
+                    onChange={(event) => {
+                      setBannerUrl(event.target.value);
+
+                      if (bannerFile) setBannerFile(null);
+
+                      if (bannerPreview?.startsWith("blob:")) {
+                        URL.revokeObjectURL(bannerPreview);
+                      }
+
+                      setBannerPreview("");
+                    }}
+                    className="mt-3 h-11 w-full rounded-lg border border-[#e4bdbc] bg-[#f3faff] px-4 text-sm text-[#001f29] outline-none transition-all placeholder:text-[#906f6e] focus:border-[#215d7d] focus:ring-2 focus:ring-[#215d7d]/20"
+                    placeholder="O pegá una URL de imagen"
+                    type="url"
+                  />
+                </div>
+
+                <div className="space-y-6 md:col-span-7">
+                  <TextField
+                    label="Nombre del evento"
+                    value={title}
+                    onChange={setTitle}
+                    placeholder="Ej: Festival de Verano 2024"
+                  />
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <TextField
+                      label="Ciudad"
+                      value={city}
+                      onChange={setCity}
+                      placeholder="Ciudad"
+                      icon="location_on"
                     />
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-11 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                        onClick={() => document.getElementById("banner-file")?.click()}
-                        disabled={creating || bannerUploading}
-                      >
-                        <ImageIcon className="mr-2 h-4 w-4" />
-                        Choose file
-                      </Button>
 
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-11 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                        onClick={clearBanner}
-                        disabled={creating || bannerUploading || (!bannerUrl && !bannerFile && !bannerPreview)}
-                      >
-                        Clear
-                      </Button>
-                    </div>
+                    <TextField
+                      label="Lugar / Venue"
+                      value={venue}
+                      onChange={setVenue}
+                      placeholder="Estadio / Teatro"
+                      icon="stadium"
+                    />
+                  </div>
 
-                    <div className="text-[11px] text-white/40 leading-5">
-                      🧠 If you choose a file, it uploads to Cloudinary <span className="text-white/70">after</span> event creation (needs eventId).
-                    </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <TextField
+                      label="Fecha de inicio"
+                      value={startAt}
+                      onChange={setStartAt}
+                      type="datetime-local"
+                    />
+
+                    <TextField
+                      label="Fecha de fin"
+                      value={endAt}
+                      onChange={setEndAt}
+                      type="datetime-local"
+                    />
                   </div>
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-2">
-                  <label className="text-xs uppercase tracking-widest text-white/60">
-                    City (optional)
-                  </label>
-                  <Input
-                    className="h-12 rounded-2xl border-white/10 bg-white/5 text-white placeholder:text-white/30"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    placeholder="Corrientes"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <label className="text-xs uppercase tracking-widest text-white/60">
-                    Venue (optional)
-                  </label>
-                  <Input
-                    className="h-12 rounded-2xl border-white/10 bg-white/5 text-white placeholder:text-white/30"
-                    value={venue}
-                    onChange={(e) => setVenue(e.target.value)}
-                    placeholder="Centro de Convenciones"
-                  />
-                </div>
-              </div>
+              <section className="space-y-4">
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                  <h3 className="flex items-center gap-2 text-[24px] font-bold leading-8 text-[#001f29]">
+                    <span className="material-symbols-outlined text-[#b20024]">
+                      confirmation_number
+                    </span>
+                    Tipos de entrada
+                  </h3>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-2">
-                  <label className="text-xs uppercase tracking-widest text-white/60">
-                    Start (required)
-                  </label>
-                  <Input
-                    type="datetime-local"
-                    className="h-12 rounded-2xl border-white/10 bg-white/5 text-white"
-                    value={startAt}
-                    onChange={(e) => setStartAt(e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <label className="text-xs uppercase tracking-widest text-white/60">
-                    End (optional)
-                  </label>
-                  <Input
-                    type="datetime-local"
-                    className="h-12 rounded-2xl border-white/10 bg-white/5 text-white"
-                    value={endAt}
-                    onChange={(e) => setEndAt(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <Separator className="my-1 bg-white/10" />
-
-              <div className="grid gap-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs uppercase tracking-widest text-white/60">
-                    Ticket Types (required)
-                  </label>
-
-                  <Button
+                  <button
                     type="button"
-                    variant="outline"
-                    className="h-9 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
                     onClick={addTicketDraft}
                     disabled={creating || bannerUploading}
+                    className="flex items-center gap-1 text-[14px] font-bold leading-5 tracking-[0.05em] text-[#b20024] transition-colors hover:underline disabled:opacity-60"
                   >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add
-                  </Button>
+                    <span className="material-symbols-outlined text-xl">
+                      add_circle
+                    </span>
+                    Agregar otro tipo de entrada
+                  </button>
                 </div>
 
-                <div className="grid gap-3">
-                  {ticketDrafts.map((t) => (
+                <div className="space-y-3">
+                  {ticketDrafts.map((ticket) => (
                     <div
-                      key={t.tmpId}
-                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                      key={ticket.tmpId}
+                      className="grid grid-cols-1 items-end gap-4 rounded-xl border border-[#e4bdbc] bg-[#e5f6ff] p-4 md:grid-cols-12"
                     >
-                      <div className="grid gap-3 md:grid-cols-[1.2fr_.8fr_.6fr_auto]">
-                        <div className="grid gap-1">
-                          <div className="text-[10px] uppercase tracking-widest text-white/45">
-                            Name
-                          </div>
-                          <Input
-                            className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                            value={t.name}
-                            onChange={(e) =>
-                              updateTicketDraft(t.tmpId, { name: e.target.value })
-                            }
-                            placeholder="GENERAL / VIP"
-                          />
-                        </div>
+                      <TicketInput
+                        className="md:col-span-5"
+                        label="Nombre de entrada"
+                        value={ticket.name}
+                        onChange={(value) =>
+                          updateTicketDraft(ticket.tmpId, { name: value })
+                        }
+                        placeholder="Ej: General Early Bird"
+                      />
 
-                        <div className="grid gap-1">
-                          <div className="text-[10px] uppercase tracking-widest text-white/45">
-                            Price
-                          </div>
-                          <Input
-                            type="number"
-                            min={0}
-                            step="1"
-                            className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                            value={t.price}
-                            onChange={(e) =>
-                              updateTicketDraft(t.tmpId, { price: Number(e.target.value) })
-                            }
-                          />
-                          <p className="text-[11px] text-white/40 leading-4">
-                            Price per ticket (0 = free).
-                          </p>
-                        </div>
+                      <TicketInput
+                        className="md:col-span-3"
+                        label="Precio"
+                        value={ticket.price}
+                        onChange={(value) =>
+                          updateTicketDraft(ticket.tmpId, {
+                            price: Number(value),
+                          })
+                        }
+                        placeholder="0.00"
+                        type="number"
+                        prefix="$"
+                      />
 
-                        <div className="grid gap-1">
-                          <div className="text-[10px] uppercase tracking-widest text-white/45">
-                            Capacity
-                          </div>
-                          <Input
-                            type="number"
-                            min={1}
-                            step="1"
-                            className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                            value={t.capacity}
-                            onChange={(e) =>
-                              updateTicketDraft(t.tmpId, { capacity: Number(e.target.value) })
-                            }
-                          />
-                          <p className="text-[11px] text-white/40 leading-4">
-                            Max tickets available for this type.
-                          </p>
-                        </div>
+                      <TicketInput
+                        className="md:col-span-3"
+                        label="Capacidad"
+                        value={ticket.capacity}
+                        onChange={(value) =>
+                          updateTicketDraft(ticket.tmpId, {
+                            capacity: Number(value),
+                          })
+                        }
+                        placeholder="100"
+                        type="number"
+                      />
 
-                        <div className="flex items-end justify-end">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-11 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                            onClick={() => removeTicketDraft(t.tmpId)}
-                            disabled={(creating || bannerUploading) || ticketDrafts.length <= 1}
-                            title={
-                              ticketDrafts.length <= 1
-                                ? "At least 1 ticket type is required"
-                                : "Remove"
-                            }
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
+                      <div className="flex justify-end md:col-span-1 md:justify-center md:pb-1">
+                        <button
+                          type="button"
+                          onClick={() => removeTicketDraft(ticket.tmpId)}
+                          disabled={
+                            creating ||
+                            bannerUploading ||
+                            ticketDrafts.length <= 1
+                          }
+                          className="rounded-lg p-2 text-[#5b403f] transition-colors hover:bg-[#ffdad6] hover:text-[#ba1a1a] disabled:opacity-40"
+                        >
+                          <span className="material-symbols-outlined">
+                            delete
+                          </span>
+                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
 
               {createErr ? (
-                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                <div className="rounded-lg border border-[#ffdad6] bg-[#ffdad6] px-4 py-3 text-sm font-semibold text-[#93000a]">
                   {createErr}
                 </div>
               ) : null}
-
-              <div className="grid gap-3">
-                <Button
-                  className="h-12 rounded-2xl bg-violet-600 hover:bg-violet-500"
-                  disabled={creating || bannerUploading}
-                >
-                  {creating ? "CREATING..." : bannerUploading ? "UPLOADING BANNER..." : "CREATE EVENT"}
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-12 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                  onClick={() => setCreateOpen(false)}
-                  disabled={creating || bannerUploading}
-                >
-                  Cancel
-                </Button>
-              </div>
-
-              <div className="text-center text-[11px] text-white/35">
-                After creating, publish when you’re ready.
-              </div>
             </form>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+          </div>
 
-      {/* =========================
-          EDIT EVENT MODAL
-      ========================= */}
-      <Dialog.Root
-        open={editEventOpen}
-        onOpenChange={(v) => {
-          setEditEventOpen(v);
-          if (!v) {
-            setEditErr("");
-            setEditEventId(null);
-            setEBannerFile(null);
-            if (eBannerPreview?.startsWith("blob:")) URL.revokeObjectURL(eBannerPreview);
-            setEBannerPreview("");
-            setEBannerUploading(false);
+          <footer className="flex flex-col justify-end gap-4 border-t border-[#e4bdbc] bg-[#e5f6ff] p-6 md:flex-row">
+            <Dialog.Close
+              disabled={creating || bannerUploading}
+              className="order-2 h-12 rounded-lg px-8 font-bold text-[#001f29] transition-colors hover:bg-[#d8f2ff] disabled:opacity-60 md:order-1"
+            >
+              Cancelar
+            </Dialog.Close>
+
+            <button
+              form="create-event-form"
+              type="submit"
+              disabled={creating || bannerUploading}
+              className="order-1 h-12 rounded-lg bg-[#b20024] px-10 font-bold text-white shadow-lg transition-all hover:scale-[1.02] hover:bg-[#d62839] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 md:order-2"
+            >
+              {creating
+                ? "Creando..."
+                : bannerUploading
+                  ? "Subiendo imagen..."
+                  : "Crear evento"}
+            </button>
+          </footer>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function EditEventModal({
+  open,
+  setOpen,
+  editLoading,
+  editSaving,
+  editErr,
+  setEditErr,
+  editEventId,
+  setEditEventId,
+  eTitle,
+  setETitle,
+  eDescription,
+  setEDescription,
+  eVenue,
+  setEVenue,
+  eCity,
+  setECity,
+  eStartAt,
+  setEStartAt,
+  eEndAt,
+  setEEndAt,
+  eBannerUrl,
+  setEBannerUrl,
+  eTags,
+  setETags,
+  eBannerFile,
+  setEBannerFile,
+  eBannerPreview,
+  setEBannerPreview,
+  eBannerUploading,
+  onPickEditBannerFile,
+  clearEditBannerLocal,
+  uploadEditBannerNow,
+  editTicketTypes,
+  addEditTicketType,
+  updateEditTicketType,
+  deleteEditTicketType,
+  saveEditEvent,
+}) {
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(value) => {
+        setOpen(value);
+
+        if (!value) {
+          setEditErr("");
+          setEditEventId(null);
+          setEBannerFile(null);
+
+          if (eBannerPreview?.startsWith("blob:")) {
+            URL.revokeObjectURL(eBannerPreview);
           }
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-          <Dialog.Content
-            className="
-              fixed left-1/2 top-1/2 z-50
-              w-[92vw] max-w-2xl
-              -translate-x-1/2 -translate-y-1/2
-              rounded-3xl border border-white/10
-              bg-[#0b0812]/95 p-6 shadow-2xl
-              max-h-[85vh] overflow-y-auto
-            "
-          >
-            <Dialog.Title className="sr-only">Edit event</Dialog.Title>
-            <Dialog.Description className="sr-only">
-              Update event details, banner image, and ticket types.
-            </Dialog.Description>
 
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="text-xs uppercase tracking-widest text-violet-300">
-                  Edit event
-                </div>
-                <div className="mt-2 text-2xl font-extrabold tracking-tight">
-                  Update details & tickets
-                </div>
-                <div className="mt-1 text-sm text-white/60">
-                  You can edit published events too.
-                </div>
-              </div>
+          setEBannerPreview("");
+        }
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-[#001f29]/40 backdrop-blur-md" />
 
-              <Dialog.Close className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white">
-                ✕
-              </Dialog.Close>
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[94vw] max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <Dialog.Title className="sr-only">Editar evento</Dialog.Title>
+          <Dialog.Description className="sr-only">
+            Actualizar datos del evento, imagen y tipos de entrada.
+          </Dialog.Description>
+
+          <header className="flex items-start justify-between border-b border-[#e4bdbc] p-6">
+            <div>
+              <h2 className="text-[32px] font-extrabold leading-10 tracking-[-0.01em] text-[#001f29]">
+                Editar evento
+              </h2>
+
+              <p className="mt-1 text-[16px] leading-6 text-[#5b403f]">
+                Actualizá los detalles, imagen y entradas disponibles.
+              </p>
             </div>
 
-            <Separator className="my-5 bg-white/10" />
+            <Dialog.Close className="grid h-10 w-10 place-items-center rounded-full text-[#001f29] transition-colors hover:bg-[#e5f6ff]">
+              <span className="material-symbols-outlined">close</span>
+            </Dialog.Close>
+          </header>
 
+          <div className="custom-scrollbar flex-1 overflow-y-auto p-6 md:p-8">
             {editLoading ? (
-              <div className="grid gap-3">
-                <Skeleton className="h-10 w-full rounded-2xl bg-white/10" />
-                <Skeleton className="h-10 w-full rounded-2xl bg-white/10" />
-                <Skeleton className="h-40 w-full rounded-2xl bg-white/10" />
+              <div className="space-y-4">
+                <div className="h-12 animate-pulse rounded-lg bg-[#d8f2ff]" />
+                <div className="h-12 animate-pulse rounded-lg bg-[#d8f2ff]" />
+                <div className="h-40 animate-pulse rounded-lg bg-[#d8f2ff]" />
               </div>
             ) : (
-              <div className="grid gap-4">
-                <div className="grid gap-2">
-                  <label className="text-xs uppercase tracking-widest text-white/60">
-                    Title
-                  </label>
-                  <Input
-                    className="h-12 rounded-2xl border-white/10 bg-white/5 text-white"
-                    value={eTitle}
-                    onChange={(e) => setETitle(e.target.value)}
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <label className="text-xs uppercase tracking-widest text-white/60">
-                    Description
-                  </label>
-                  <textarea
-                    className="min-h-[110px] rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none"
-                    value={eDescription}
-                    onChange={(e) => setEDescription(e.target.value)}
-                    placeholder="Describe your event..."
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="grid gap-2">
-                    <label className="text-xs uppercase tracking-widest text-white/60">
-                      City
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 gap-8 md:grid-cols-12">
+                  <div className="md:col-span-5">
+                    <label className="mb-3 block text-[14px] font-semibold uppercase leading-5 tracking-[0.08em] text-[#5b403f]">
+                      Imagen del evento
                     </label>
-                    <Input
-                      className="h-12 rounded-2xl border-white/10 bg-white/5 text-white"
-                      value={eCity}
-                      onChange={(e) => setECity(e.target.value)}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-xs uppercase tracking-widest text-white/60">
-                      Venue
-                    </label>
-                    <Input
-                      className="h-12 rounded-2xl border-white/10 bg-white/5 text-white"
-                      value={eVenue}
-                      onChange={(e) => setEVenue(e.target.value)}
-                    />
-                  </div>
-                </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="grid gap-2">
-                    <label className="text-xs uppercase tracking-widest text-white/60">
-                      Start
-                    </label>
-                    <Input
-                      type="datetime-local"
-                      className="h-12 rounded-2xl border-white/10 bg-white/5 text-white"
-                      value={eStartAt}
-                      onChange={(e) => setEStartAt(e.target.value)}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-xs uppercase tracking-widest text-white/60">
-                      End
-                    </label>
-                    <Input
-                      type="datetime-local"
-                      className="h-12 rounded-2xl border-white/10 bg-white/5 text-white"
-                      value={eEndAt}
-                      onChange={(e) => setEEndAt(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-2">
-                  <label className="text-xs uppercase tracking-widest text-white/60">
-                    Banner image
-                  </label>
-
-                  {eBannerPreview || eBannerUrl ? (
-                    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+                    <div className="relative aspect-square overflow-hidden rounded-xl border-2 border-dashed border-[#e4bdbc] bg-[#d8f2ff]">
                       <img
-                        src={eBannerPreview || eBannerUrl}
-                        alt="Banner preview"
-                        className="h-44 w-full object-cover opacity-90"
+                        src={
+                          eBannerPreview ||
+                          eBannerUrl ||
+                          "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?auto=format&fit=crop&w=1200&q=80"
+                        }
+                        alt="Banner del evento"
+                        className="absolute inset-0 h-full w-full object-cover opacity-70"
                       />
-                      {eBannerPreview ? (
-                        <button
-                          type="button"
-                          onClick={clearEditBannerLocal}
-                          className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-xl border border-white/10 bg-black/50 px-3 py-1.5 text-xs text-white/80 hover:bg-black/70"
-                          disabled={eBannerUploading || editSaving}
-                        >
-                          <X className="h-4 w-4" /> Remove
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                      No banner yet. Upload one or paste a URL.
-                    </div>
-                  )}
 
-                  <Input
-                    className="h-12 rounded-2xl border-white/10 bg-white/5 text-white"
-                    value={eBannerUrl}
-                    onChange={(e) => setEBannerUrl(e.target.value)}
-                    placeholder="https://... (bannerUrl)"
-                    disabled={eBannerUploading}
-                  />
+                      <div className="absolute inset-0 bg-[#001f29]/10" />
 
-                  <div className="grid gap-2">
+                      <div className="relative z-10 flex h-full flex-col items-center justify-center p-6 text-center">
+                        <span className="material-symbols-outlined mb-2 text-5xl text-[#b20024]">
+                          image
+                        </span>
+
+                        <p className="text-[16px] font-bold leading-6 text-[#001f29]">
+                          Imagen actual
+                        </p>
+                      </div>
+                    </div>
+
                     <input
-                      id="edit-banner-file"
+                      id="dashboard-edit-banner"
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => onPickEditBannerFile(e.target.files?.[0] || null)}
+                      onChange={(event) =>
+                        onPickEditBannerFile(event.target.files?.[0] || null)
+                      }
                     />
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-11 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                        onClick={() => document.getElementById("edit-banner-file")?.click()}
-                        disabled={eBannerUploading || editSaving}
-                      >
-                        <ImageIcon className="mr-2 h-4 w-4" />
-                        Choose file
-                      </Button>
 
-                      <Button
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <button
                         type="button"
-                        className="h-11 rounded-2xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50"
+                        onClick={() =>
+                          document
+                            .getElementById("dashboard-edit-banner")
+                            ?.click()
+                        }
+                        disabled={editSaving || eBannerUploading}
+                        className="rounded-lg border border-[#215d7d] px-3 py-2 text-sm font-bold text-[#215d7d] hover:bg-[#e5f6ff] disabled:opacity-60"
+                      >
+                        Elegir
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={uploadEditBannerNow}
-                        disabled={!eBannerFile || eBannerUploading || editSaving}
+                        disabled={!eBannerFile || editSaving || eBannerUploading}
+                        className="rounded-lg bg-[#215d7d] px-3 py-2 text-sm font-bold text-white hover:bg-[#3e7697] disabled:opacity-60"
                       >
-                        {eBannerUploading ? "UPLOADING..." : "Upload"}
-                      </Button>
+                        {eBannerUploading ? "Subiendo..." : "Subir"}
+                      </button>
 
-                      <Button
+                      <button
                         type="button"
-                        variant="outline"
-                        className="h-11 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
                         onClick={clearEditBannerLocal}
-                        disabled={!eBannerFile || eBannerUploading || editSaving}
+                        disabled={!eBannerPreview || editSaving || eBannerUploading}
+                        className="rounded-lg border border-[#e4bdbc] px-3 py-2 text-sm font-bold text-[#5b403f] hover:bg-[#e5f6ff] disabled:opacity-60"
                       >
-                        Clear file
-                      </Button>
+                        Limpiar
+                      </button>
                     </div>
 
-                    <p className="text-[11px] text-white/40">
-                      ✅ Upload sets <span className="text-white/70">bannerUrl</span> automatically. Then hit{" "}
-                      <span className="text-white/70">Save Changes</span>.
-                    </p>
+                    <input
+                      value={eBannerUrl}
+                      onChange={(event) => setEBannerUrl(event.target.value)}
+                      className="mt-3 h-11 w-full rounded-lg border border-[#e4bdbc] bg-[#f3faff] px-4 text-sm text-[#001f29] outline-none transition-all placeholder:text-[#906f6e] focus:border-[#215d7d]"
+                      placeholder="URL de imagen"
+                      type="url"
+                    />
+                  </div>
+
+                  <div className="space-y-6 md:col-span-7">
+                    <TextField
+                      label="Nombre del evento"
+                      value={eTitle}
+                      onChange={setETitle}
+                      placeholder="Nombre"
+                    />
+
+                    <div>
+                      <label className="mb-2 block text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]">
+                        Descripción
+                      </label>
+
+                      <textarea
+                        value={eDescription}
+                        onChange={(event) => setEDescription(event.target.value)}
+                        className="min-h-28 w-full rounded-lg border border-[#e4bdbc] bg-[#f3faff] px-4 py-3 text-[#001f29] outline-none transition-all placeholder:text-[#906f6e] focus:border-[#215d7d]"
+                        placeholder="Descripción del evento"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <TextField
+                        label="Ciudad"
+                        value={eCity}
+                        onChange={setECity}
+                        placeholder="Ciudad"
+                        icon="location_on"
+                      />
+
+                      <TextField
+                        label="Lugar / Venue"
+                        value={eVenue}
+                        onChange={setEVenue}
+                        placeholder="Lugar"
+                        icon="stadium"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <TextField
+                        label="Fecha de inicio"
+                        value={eStartAt}
+                        onChange={setEStartAt}
+                        type="datetime-local"
+                      />
+
+                      <TextField
+                        label="Fecha de fin"
+                        value={eEndAt}
+                        onChange={setEEndAt}
+                        type="datetime-local"
+                      />
+                    </div>
+
+                    <TextField
+                      label="Tags"
+                      value={eTags}
+                      onChange={setETags}
+                      placeholder="Conciertos, Música, Festival"
+                    />
                   </div>
                 </div>
 
-                <div className="grid gap-2">
-                  <label className="text-xs uppercase tracking-widest text-white/60">
-                    Tags
-                  </label>
-                  <Input
-                    className="h-12 rounded-2xl border-white/10 bg-white/5 text-white"
-                    value={eTags}
-                    onChange={(e) => setETags(e.target.value)}
-                    placeholder="music, festival, live"
-                  />
-                  <p className="text-[11px] text-white/40">Comma-separated.</p>
-                </div>
+                <section className="space-y-4">
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                    <h3 className="flex items-center gap-2 text-[24px] font-bold leading-8 text-[#001f29]">
+                      <span className="material-symbols-outlined text-[#b20024]">
+                        confirmation_number
+                      </span>
+                      Tipos de entrada
+                    </h3>
 
-                <Separator className="my-2 bg-white/10" />
-
-                <div className="flex items-center justify-between">
-                  <div className="text-xs uppercase tracking-widest text-white/40">
-                    Ticket Types
+                    <button
+                      type="button"
+                      onClick={addEditTicketType}
+                      disabled={editSaving}
+                      className="flex items-center gap-1 text-[14px] font-bold leading-5 tracking-[0.05em] text-[#b20024] transition-colors hover:underline disabled:opacity-60"
+                    >
+                      <span className="material-symbols-outlined text-xl">
+                        add_circle
+                      </span>
+                      Agregar entrada
+                    </button>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                    onClick={addEditTicketType}
-                    disabled={editSaving || eBannerUploading}
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add type
-                  </Button>
-                </div>
 
-                <div className="grid gap-3">
-                  {editTicketTypes.length ? (
-                    editTicketTypes.map((t) => {
-                      const cannotDelete = !t.isNew && Number(t.soldCount || 0) > 0;
+                  <div className="space-y-3">
+                    {editTicketTypes.map((ticket) => (
+                      <div
+                        key={ticket.id}
+                        className="grid grid-cols-1 items-end gap-4 rounded-xl border border-[#e4bdbc] bg-[#e5f6ff] p-4 md:grid-cols-12"
+                      >
+                        <TicketInput
+                          className="md:col-span-4"
+                          label="Nombre"
+                          value={ticket.name}
+                          onChange={(value) =>
+                            updateEditTicketType(ticket.id, { name: value })
+                          }
+                          placeholder="General"
+                        />
 
-                      return (
-                        <div
-                          key={t.id}
-                          className="rounded-2xl border border-white/10 bg-black/20 p-4"
-                        >
-                          <div className="grid gap-3 md:grid-cols-[1.2fr_.8fr_.6fr_auto]">
-                            <div className="grid gap-1">
-                              <Input
-                                className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                                value={t.name}
-                                onChange={(e) =>
-                                  updateEditTicketType(t.id, { name: e.target.value })
-                                }
-                                placeholder="VIP / GENERAL"
-                              />
-                              <p className="text-[11px] text-white/40">
-                                Name shown to buyers.
-                              </p>
-                            </div>
+                        <TicketInput
+                          className="md:col-span-2"
+                          label="Precio"
+                          value={ticket.price}
+                          onChange={(value) =>
+                            updateEditTicketType(ticket.id, {
+                              price: Number(value),
+                            })
+                          }
+                          type="number"
+                          prefix="$"
+                        />
 
-                            <div className="grid gap-1">
-                              <Input
-                                type="number"
-                                min={0}
-                                className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                                value={Number(t.price ?? 0)}
-                                onChange={(e) =>
-                                  updateEditTicketType(t.id, { price: Number(e.target.value) })
-                                }
-                              />
-                              <p className="text-[11px] text-white/40 leading-4">
-                                Price per ticket (0 = free).
-                              </p>
-                            </div>
+                        <TicketInput
+                          className="md:col-span-2"
+                          label="Capacidad"
+                          value={ticket.capacity}
+                          onChange={(value) =>
+                            updateEditTicketType(ticket.id, {
+                              capacity: Number(value),
+                            })
+                          }
+                          type="number"
+                        />
 
-                            <div className="grid gap-1">
-                              <Input
-                                type="number"
-                                min={1}
-                                className="h-11 rounded-2xl border-white/10 bg-white/5 text-white"
-                                value={Number(t.capacity ?? 1)}
-                                onChange={(e) =>
-                                  updateEditTicketType(t.id, { capacity: Number(e.target.value) })
-                                }
-                              />
-                              <p className="text-[11px] text-white/40 leading-4">
-                                Max available (must be ≥ sold: {number(t.soldCount || 0)}).
-                              </p>
-                            </div>
+                        <div className="md:col-span-2">
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.05em] text-[#5b403f]">
+                            Vendidos
+                          </label>
 
-                            <div className="flex items-end justify-end gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="h-11 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                                disabled={editSaving || eBannerUploading || cannotDelete}
-                                title={cannotDelete ? "Cannot delete a ticket type with sales" : "Delete"}
-                                onClick={() => deleteEditTicketType(t)}
-                              >
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="mt-2 text-xs text-white/45">
-                            Sold: {number(t.soldCount)} {t.isNew ? "• New (not saved yet)" : ""}
+                          <div className="flex h-11 items-center rounded-lg border border-[#e4bdbc] bg-white px-4 text-[#5b403f]">
+                            {number(ticket.soldCount)}
                           </div>
                         </div>
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-sm text-white/60">
-                      No ticket types yet.
-                    </div>
-                  )}
-                </div>
+
+                        <div className="flex justify-end md:col-span-2 md:justify-center md:pb-1">
+                          <button
+                            type="button"
+                            onClick={() => deleteEditTicketType(ticket)}
+                            disabled={editSaving}
+                            className="rounded-lg p-2 text-[#5b403f] transition-colors hover:bg-[#ffdad6] hover:text-[#ba1a1a] disabled:opacity-40"
+                          >
+                            <span className="material-symbols-outlined">
+                              delete
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
 
                 {editErr ? (
-                  <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  <div className="rounded-lg border border-[#ffdad6] bg-[#ffdad6] px-4 py-3 text-sm font-semibold text-[#93000a]">
                     {editErr}
                   </div>
                 ) : null}
-
-                <div className="grid gap-3">
-                  <Button
-                    type="button"
-                    className="h-12 rounded-2xl bg-violet-600 hover:bg-violet-500"
-                    disabled={editSaving || eBannerUploading}
-                    onClick={saveEditEvent}
-                  >
-                    {editSaving ? "SAVING..." : "SAVE CHANGES"}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-12 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                    onClick={() => setEditEventOpen(false)}
-                    disabled={editSaving || eBannerUploading}
-                  >
-                    Cancel
-                  </Button>
-                </div>
               </div>
             )}
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-    </div>
+          </div>
+
+          <footer className="flex flex-col justify-end gap-4 border-t border-[#e4bdbc] bg-[#e5f6ff] p-6 md:flex-row">
+            <Dialog.Close
+              disabled={editSaving || eBannerUploading}
+              className="order-2 h-12 rounded-lg px-8 font-bold text-[#001f29] transition-colors hover:bg-[#d8f2ff] disabled:opacity-60 md:order-1"
+            >
+              Cancelar
+            </Dialog.Close>
+
+            <button
+              type="button"
+              onClick={saveEditEvent}
+              disabled={editLoading || editSaving || eBannerUploading}
+              className="order-1 h-12 rounded-lg bg-[#b20024] px-10 font-bold text-white shadow-lg transition-all hover:scale-[1.02] hover:bg-[#d62839] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 md:order-2"
+            >
+              {editSaving ? "Guardando..." : "Guardar cambios"}
+            </button>
+          </footer>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
-/* =========================
-   Small UI components
-========================= */
-function KpiCard({ loading, icon, title, value, hint }) {
+function KpiCard({ loading, icon, label, value, trend, mutedTrend, tone }) {
+  const iconClass =
+    tone === "red"
+      ? "bg-[#d8f2ff] text-[#d62839]"
+      : "bg-[#d8f2ff] text-[#215d7d]";
+
   return (
-    <Card className="border-white/10 bg-white/5">
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between">
-          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-white/5 ring-1 ring-white/10 text-white/80">
-            {icon}
-          </div>
-          <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200">
-            +0.0%
-          </div>
+    <article className="rounded-2xl border border-[#baeaff] bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
+      <div className="mb-4 flex items-start justify-between">
+        <div
+          className={`flex h-14 w-14 items-center justify-center rounded-xl ${iconClass}`}
+        >
+          <span className="material-symbols-outlined">{icon}</span>
         </div>
 
-        <div className="mt-4 text-sm text-white/60">{title}</div>
-        {loading ? (
-          <div className="mt-2">
-            <Skeleton className="h-9 w-40 rounded-2xl bg-white/10" />
-            <Skeleton className="mt-3 h-4 w-56 rounded bg-white/10" />
-          </div>
-        ) : (
-          <>
-            <div className="mt-2 text-3xl font-extrabold tracking-tight">{value}</div>
-            <div className="mt-2 text-xs text-white/45">{hint}</div>
-          </>
-        )}
+        <span
+          className={[
+            "text-sm font-bold",
+            mutedTrend ? "text-[#5b403f]" : "text-emerald-600",
+          ].join(" ")}
+        >
+          {trend}
+          {!mutedTrend ? (
+            <span className="material-symbols-outlined text-sm">
+              trending_up
+            </span>
+          ) : null}
+        </span>
+      </div>
 
-        <div className="mt-5 h-10 rounded-2xl bg-gradient-to-r from-violet-600/30 via-white/5 to-transparent" />
-      </CardContent>
-    </Card>
+      <p className="text-[16px] leading-6 text-[#5b403f]">{label}</p>
+
+      {loading ? (
+        <div className="mt-2 h-9 w-40 animate-pulse rounded bg-[#d8f2ff]" />
+      ) : (
+        <h3 className="mt-1 text-[32px] font-extrabold leading-10 text-[#001f29]">
+          {value}
+        </h3>
+      )}
+    </article>
   );
 }
 
-function MiniStat({ label, value }) {
+function TextField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  icon,
+}) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-      <div className="text-[10px] uppercase tracking-widest text-white/45">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-white/85">{value}</div>
+    <div>
+      <label className="mb-2 block text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]">
+        {label}
+      </label>
+
+      <div className="relative">
+        {icon ? (
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#5b403f]">
+            {icon}
+          </span>
+        ) : null}
+
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={[
+            "h-12 w-full rounded-lg border border-[#e4bdbc] bg-[#f3faff] px-4 text-[#001f29] outline-none transition-all placeholder:text-[#906f6e] focus:border-[#215d7d] focus:ring-2 focus:ring-[#215d7d]/20",
+            icon ? "pl-10" : "",
+          ].join(" ")}
+          placeholder={placeholder}
+          type={type}
+        />
+      </div>
     </div>
+  );
+}
+
+function TicketInput({
+  className = "",
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  prefix,
+}) {
+  return (
+    <div className={className}>
+      <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.05em] text-[#5b403f]">
+        {label}
+      </label>
+
+      <div className="relative">
+        {prefix ? (
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-[#5b403f]">
+            {prefix}
+          </span>
+        ) : null}
+
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={[
+            "h-11 w-full rounded-lg border border-[#e4bdbc] bg-white px-4 text-[#001f29] outline-none transition-all placeholder:text-[#906f6e] focus:border-[#215d7d] focus:ring-1 focus:ring-[#215d7d]",
+            prefix ? "pl-7" : "",
+          ].join(" ")}
+          placeholder={placeholder}
+          type={type}
+          min={type === "number" ? "0" : undefined}
+          step={type === "number" ? "1" : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DashboardStyles() {
+  return (
+    <style>{`
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #baeaff;
+        border-radius: 999px;
+      }
+    `}</style>
   );
 }

@@ -1,32 +1,21 @@
+// src/pages/TicketCheckIn.jsx
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Html5Qrcode } from "html5-qrcode";
 
 import { checkInTicket, getEventTicketsForCheckIn } from "@/api/tickets.api";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Camera,
-  CameraOff,
-  CheckCircle2,
-  XCircle,
-  ScanLine,
-  Clock3,
-  Search,
-  User,
-  Mail,
-  ArrowLeft,
-  RefreshCcw,
-} from "lucide-react";
 
-function formatDateTime(iso) {
+function formatShortDate(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("es-AR", {
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleString("es-AR", {
     day: "2-digit",
     month: "short",
-    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -34,7 +23,12 @@ function formatDateTime(iso) {
 
 function formatTime(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString("es-AR", {
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleTimeString("es-AR", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -42,11 +36,11 @@ function formatTime(iso) {
 }
 
 function normalizeApiError(err) {
-  const msg = err?.response?.data?.message || err?.message || "Invalid ticket";
+  const msg = err?.response?.data?.message || err?.message || "Ticket inválido";
 
-  if (msg.includes("USED")) return "Ticket already used";
-  if (msg.includes("VOID")) return "Ticket voided";
-  if (msg.toLowerCase().includes("not found")) return "Ticket not found";
+  if (msg.includes("USED")) return "El ticket ya fue utilizado.";
+  if (msg.includes("VOID")) return "El ticket fue anulado.";
+  if (msg.toLowerCase().includes("not found")) return "Ticket no encontrado.";
 
   return msg;
 }
@@ -54,6 +48,7 @@ function normalizeApiError(err) {
 function playBeep(type = "success") {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
+
     if (!AudioCtx) return;
 
     const ctx = new AudioCtx();
@@ -75,7 +70,7 @@ function playBeep(type = "success") {
       oscillator.stop(ctx.currentTime + 0.22);
     }
   } catch {
-    // nada
+    // ignore audio errors
   }
 }
 
@@ -87,24 +82,6 @@ function vibrate(type = "success") {
   } else {
     navigator.vibrate([120, 60, 120]);
   }
-}
-
-function statusBadge(status) {
-  const s = String(status || "").toUpperCase();
-
-  if (s === "VALID") {
-    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
-  }
-
-  if (s === "USED") {
-    return "border-yellow-500/20 bg-yellow-500/10 text-yellow-200";
-  }
-
-  if (s === "VOID") {
-    return "border-red-500/20 bg-red-500/10 text-red-200";
-  }
-
-  return "border-white/10 bg-white/10 text-white";
 }
 
 function getBackCamera(devices = []) {
@@ -123,6 +100,37 @@ function getBackCamera(devices = []) {
   return backCamera || devices[devices.length - 1] || devices[0];
 }
 
+function ticketStatusLabel(status) {
+  const value = String(status || "").toUpperCase();
+
+  if (value === "VALID") return "Válido";
+  if (value === "USED") return "Usado";
+  if (value === "VOID") return "Anulado";
+
+  return value || "—";
+}
+
+function getTicketTypeName(ticket) {
+  return ticket?.ticketType?.name || ticket?.ticketTypeName || "GENERAL";
+}
+
+function getBuyerName(ticket) {
+  return ticket?.buyer?.username || ticket?.buyer?.name || "Sin nombre";
+}
+
+function getBuyerEmail(ticket) {
+  return ticket?.buyer?.email || "Sin email";
+}
+
+function percent(value, total) {
+  const safeValue = Number(value || 0);
+  const safeTotal = Number(total || 0);
+
+  if (!safeTotal) return 0;
+
+  return Math.min(100, Math.round((safeValue / safeTotal) * 100));
+}
+
 export function TicketCheckIn() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -133,7 +141,7 @@ export function TicketCheckIn() {
   const [loadErr, setLoadErr] = useState("");
   const [eventData, setEventData] = useState(null);
 
-  const [tab, setTab] = useState("VALID");
+  const [tab, setTab] = useState("ALL");
   const [search, setSearch] = useState("");
 
   const [code, setCode] = useState("");
@@ -156,13 +164,14 @@ export function TicketCheckIn() {
       setLoading(true);
       setLoadErr("");
 
-      const res = await getEventTicketsForCheckIn(eventId);
-      setEventData(res?.data || null);
+      const response = await getEventTicketsForCheckIn(eventId);
+
+      setEventData(response?.data || null);
     } catch (err) {
       setLoadErr(
         err?.response?.data?.message ||
           err?.message ||
-          "Could not load event tickets."
+          "No se pudieron cargar los tickets del evento."
       );
     } finally {
       setLoading(false);
@@ -171,10 +180,12 @@ export function TicketCheckIn() {
 
   useEffect(() => {
     loadTickets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
   async function handleCheckIn(ticketCode) {
     const cleanCode = String(ticketCode || "").trim();
+
     if (!cleanCode || busy) return;
 
     setBusy(true);
@@ -185,8 +196,8 @@ export function TicketCheckIn() {
 
       setResult({
         type: "success",
-        title: "Access Granted",
-        message: "Ticket accepted successfully.",
+        title: "Ticket validado correctamente",
+        message: "El asistente ya puede ingresar al recinto.",
         code: cleanCode,
       });
 
@@ -202,7 +213,7 @@ export function TicketCheckIn() {
 
       setResult({
         type: "error",
-        title: "Check-In Failed",
+        title: "No se pudo validar el ticket",
         message: friendly,
         code: cleanCode,
       });
@@ -218,6 +229,7 @@ export function TicketCheckIn() {
 
   async function handleManualCheck() {
     const cleanCode = code.trim();
+
     if (!cleanCode) return;
 
     await handleCheckIn(cleanCode);
@@ -230,7 +242,7 @@ export function TicketCheckIn() {
         await scannerRef.current.clear();
       }
     } catch {
-      // nada
+      // ignore scanner stop errors
     } finally {
       scannerRef.current = null;
       setScanning(false);
@@ -250,7 +262,10 @@ export function TicketCheckIn() {
         setCameras(devices);
 
         const backCamera = getBackCamera(devices);
-        const backIndex = devices.findIndex((d) => d.id === backCamera?.id);
+        const backIndex = devices.findIndex(
+          (device) => device.id === backCamera?.id
+        );
+
         setCameraIndex(backIndex >= 0 ? backIndex : 0);
       }
 
@@ -270,6 +285,7 @@ export function TicketCheckIn() {
         },
         async (decodedText) => {
           const scannedCode = String(decodedText || "").trim();
+
           if (!scannedCode) return;
 
           const now = Date.now();
@@ -284,6 +300,7 @@ export function TicketCheckIn() {
           lastScanRef.current = { code: scannedCode, at: now };
 
           setCode(scannedCode);
+
           await handleCheckIn(scannedCode);
 
           setTimeout(() => {
@@ -298,7 +315,7 @@ export function TicketCheckIn() {
       setScanning(false);
       setResult({
         type: "error",
-        title: "Camera Error",
+        title: "Error de cámara",
         message:
           "No se pudo acceder a la cámara. Revisá permisos, HTTPS o el dispositivo.",
       });
@@ -348,413 +365,550 @@ export function TicketCheckIn() {
   const event = eventData?.event || null;
 
   const selectedCameraLabel =
-    cameras[cameraIndex]?.label || (scanning ? "Camera active" : "No camera selected");
+    cameras[cameraIndex]?.label ||
+    (scanning ? "Cámara activa" : "Cámara sin activar");
 
   const filteredTickets = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
 
     return tickets
-      .filter((t) => {
-        if (tab === "VALID") return t.status === "VALID";
-        if (tab === "USED") return t.status === "USED";
+      .filter((ticket) => {
+        const status = String(ticket.status || "").toUpperCase();
+
+        if (tab === "VALID") return status === "VALID";
+        if (tab === "USED") return status === "USED";
+
         return true;
       })
-      .filter((t) => {
-        if (!q) return true;
+      .filter((ticket) => {
+        if (!query) return true;
 
-        const hay = [
-          t.code,
-          t.buyer?.username,
-          t.buyer?.email,
-          t.ticketType?.name,
+        const searchable = [
+          ticket.code,
+          getBuyerName(ticket),
+          getBuyerEmail(ticket),
+          getTicketTypeName(ticket),
+          ticket.status,
         ]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
 
-        return hay.includes(q);
+        return searchable.includes(query);
       });
   }, [tickets, tab, search]);
 
   if (!eventId) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-10 text-white">
-        <Card className="border-white/10 bg-white/5">
-          <CardContent className="p-6">
-            <div className="text-xl font-semibold">Missing eventId</div>
-            <p className="mt-2 text-white/60">
-              Entrá al check-in desde el dashboard de un evento.
+      <div className="ticketify-checkin bg-[#f3faff] text-[#001f29]">
+        <CheckInStyles />
+
+        <main className="tf-container flex min-h-[60vh] items-center justify-center px-4 py-10">
+          <section className="w-full max-w-xl rounded-xl border border-[#e4bdbc] bg-white p-8 text-center shadow-[0px_4px_20px_rgba(23,86,118,0.08)]">
+            <span className="material-symbols-outlined mb-4 text-6xl text-[#b20024]">
+              error
+            </span>
+
+            <h1 className="text-[32px] font-bold leading-10 text-[#001f29]">
+              Falta seleccionar un evento
+            </h1>
+
+            <p className="mt-2 text-[16px] leading-6 text-[#5b403f]">
+              Entrá al check-in desde el dashboard o desde la página de tus eventos.
             </p>
-            <Button className="mt-4" onClick={() => navigate("/dashboard")}>
-              Back to dashboard
-            </Button>
-          </CardContent>
-        </Card>
+
+            <button
+              type="button"
+              onClick={() => navigate("/dashboard")}
+              className="mt-6 rounded-lg bg-[#b20024] px-6 py-3 text-[14px] font-semibold tracking-[0.05em] text-white hover:bg-[#d62839]"
+            >
+              Volver al dashboard
+            </button>
+          </section>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 text-white">
-      <div className="mb-8 flex flex-col gap-4">
-        <Button
-          variant="outline"
-          className="w-fit rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-          onClick={() => navigate("/dashboard")}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to dashboard
-        </Button>
+    <div className="ticketify-checkin bg-[#f3faff] text-[#001f29]">
+      <CheckInStyles />
 
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <main className="tf-container flex-grow px-4 py-8">
+        <section className="flex flex-col justify-between gap-6 py-6 md:flex-row md:items-end">
           <div>
-            <div className="text-xs uppercase tracking-widest text-violet-300">
-              Event Check-In
-            </div>
-            <h1 className="mt-2 text-4xl font-extrabold tracking-tight md:text-5xl">
-              {event?.title || "CHECK-IN"}
+            <h1 className="text-[32px] font-bold leading-10 tracking-tight text-[#b20024]">
+              Check-in de tickets
             </h1>
-            <p className="mt-2 text-sm text-white/60">
-              {event?.venue || "—"}
-              {event?.city ? `, ${event.city}` : ""} •{" "}
-              {formatDateTime(event?.startAt)}
+
+            <p className="mt-1 text-[16px] leading-6 text-[#5b403f]">
+              Escaneá, validá y gestioná los tickets del evento de forma rápida y segura.
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <Card className="border-white/10 bg-white/5">
-              <CardContent className="p-4">
-                <div className="text-xs uppercase tracking-widest text-white/40">
-                  Total
-                </div>
-                <div className="mt-1 text-2xl font-bold">{stats.total}</div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-white/10 bg-white/5">
-              <CardContent className="p-4">
-                <div className="text-xs uppercase tracking-widest text-white/40">
-                  Valid
-                </div>
-                <div className="mt-1 text-2xl font-bold text-emerald-300">
-                  {stats.valid}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-white/10 bg-white/5">
-              <CardContent className="p-4">
-                <div className="text-xs uppercase tracking-widest text-white/40">
-                  Used
-                </div>
-                <div className="mt-1 text-2xl font-bold text-yellow-300">
-                  {stats.used}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[1.15fr_.95fr]">
-        <Card className="overflow-hidden rounded-3xl border-white/10 bg-white/5">
-          <CardContent className="p-6">
-            <div className="mb-5 flex flex-col justify-between gap-3 md:flex-row md:items-center">
-              <div>
-                <div className="text-xs uppercase tracking-widest text-violet-300">
-                  Live Scanner
-                </div>
-                <div className="mt-1 text-lg font-semibold">
-                  Scan ticket QR with camera
-                </div>
-                <div className="mt-1 text-xs text-white/45">
-                  {selectedCameraLabel}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {scanning && cameras.length > 1 ? (
-                  <Button
-                    onClick={switchCamera}
-                    variant="outline"
-                    className="rounded-2xl border-white/10 bg-white/5 hover:bg-white/10"
-                  >
-                    <RefreshCcw className="mr-2 h-4 w-4" />
-                    Switch camera
-                  </Button>
-                ) : null}
-
-                {!scanning ? (
-                  <Button
-                    onClick={startScanner}
-                    className="rounded-2xl bg-violet-600 hover:bg-violet-500"
-                  >
-                    <Camera className="mr-2 h-4 w-4" />
-                    Start camera
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={stopScanner}
-                    variant="destructive"
-                    className="rounded-2xl"
-                  >
-                    <CameraOff className="mr-2 h-4 w-4" />
-                    Stop camera
-                  </Button>
-                )}
-              </div>
+          <article className="flex items-center gap-4 rounded-xl border border-[#e4bdbc]/60 bg-[#d8f2ff] p-4 shadow-sm">
+            <div className="rounded-lg bg-[#b20024] p-3 text-white">
+              <span
+                className="material-symbols-outlined"
+                style={{ fontVariationSettings: "'FILL' 1" }}
+              >
+                confirmation_number
+              </span>
             </div>
 
-            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/40">
+            <div>
+              <h2 className="mb-1 text-[24px] font-bold leading-8 text-[#001f29]">
+                {event?.title || "Evento"}
+              </h2>
+
+              <div className="flex flex-wrap gap-4 text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]">
+                <span className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px]">
+                    calendar_today
+                  </span>
+                  {formatShortDate(event?.startAt)}
+                </span>
+
+                <span className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px]">
+                    location_on
+                  </span>
+                  {event?.venue || "Lugar a confirmar"}
+                </span>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        {loadErr ? (
+          <section className="mb-6 rounded-xl border border-[#ffdad6] bg-[#ffdad6] p-4 text-[#93000a]">
+            {loadErr}
+          </section>
+        ) : null}
+
+        <section className="grid grid-cols-1 gap-6 py-8 md:grid-cols-3">
+          <KpiCard
+            label="Total de tickets"
+            value={stats.total}
+            color="#215d7d"
+            progress={100}
+          />
+
+          <KpiCard
+            label="Válidos"
+            value={stats.valid}
+            color="#215d7d"
+            progress={percent(stats.valid, stats.total)}
+          />
+
+          <KpiCard
+            label="Usados"
+            value={stats.used}
+            color="#b20024"
+            progress={percent(stats.used, stats.total)}
+          />
+        </section>
+
+        <section className="mb-20 grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <article className="flex flex-col items-center rounded-xl border border-[#e4bdbc] bg-white p-6 shadow-[0px_4px_20px_rgba(23,86,118,0.08)] md:p-8">
+            <div className="mb-6 flex w-full items-center justify-between">
+              <div>
+                <h2 className="text-[24px] font-bold leading-8 text-[#001f29]">
+                  Escanear QR
+                </h2>
+
+                <p className="mt-1 text-xs text-[#5b403f]">
+                  {selectedCameraLabel}
+                </p>
+              </div>
+
+              <span className="material-symbols-outlined text-[#b20024]">
+                qr_code_scanner
+              </span>
+            </div>
+
+            <div className="relative aspect-square w-full max-w-[400px] overflow-hidden rounded-xl bg-[#001f29]">
               {result ? (
                 <div
                   className={[
-                    "pointer-events-none absolute left-4 right-4 top-4 z-20 rounded-2xl border p-4 text-center text-sm font-semibold shadow-2xl",
+                    "absolute left-4 right-4 top-4 z-30 rounded-xl border px-4 py-3 text-center text-sm font-bold shadow-xl",
                     result.type === "success"
-                      ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-100"
-                      : "border-red-500/40 bg-red-500/20 text-red-100",
+                      ? "border-green-200 bg-green-100 text-green-800"
+                      : "border-[#ffdad6] bg-[#ffdad6] text-[#93000a]",
                   ].join(" ")}
                 >
                   {result.type === "success"
-                    ? "✅ Access granted"
-                    : "❌ Check-in failed"}
+                    ? "Ticket validado correctamente"
+                    : "No se pudo validar el ticket"}
                 </div>
               ) : null}
 
               {!scanning ? (
-                <div className="grid min-h-[320px] place-items-center p-8">
-                  <div className="text-center">
-                    <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-violet-600/15 ring-1 ring-violet-500/25">
-                      <ScanLine className="h-8 w-8 text-violet-300" />
-                    </div>
-                    <div className="mt-4 text-lg font-semibold">
-                      Camera scanner is off
-                    </div>
-                    <p className="mt-2 max-w-md text-sm text-white/50">
-                      Start the camera to scan a QR code in real time, or use the
-                      manual field below.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="relative">
-                  <div id="ticket-checkin-reader" className="min-h-[320px] w-full" />
+                <>
+                  <img
+                    alt="Camera preview"
+                    className="h-full w-full object-cover opacity-60 grayscale transition-all duration-700"
+                    src="https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=900&q=80"
+                  />
 
-                  <div className="pointer-events-none absolute inset-0">
-                    <div className="absolute inset-0 bg-black/10" />
-                    <div className="absolute left-1/2 top-1/2 h-[240px] w-[240px] -translate-x-1/2 -translate-y-1/2 rounded-3xl border-2 border-violet-400/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.20)]" />
-                    <div className="absolute left-1/2 top-1/2 h-[2px] w-[220px] -translate-x-1/2 -translate-y-1/2 animate-pulse bg-violet-300 shadow-[0_0_18px_rgba(167,139,250,0.9)]" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-white">
+                        <span className="material-symbols-outlined text-4xl">
+                          photo_camera
+                        </span>
+                      </div>
+
+                      <p className="mt-4 max-w-xs text-sm text-white/80">
+                        Activá la cámara para escanear el código QR del asistente.
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </>
+              ) : (
+                <>
+                  <div id="ticket-checkin-reader" className="h-full min-h-[320px] w-full" />
+
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <div className="relative h-2/3 w-2/3 overflow-hidden rounded-2xl border-2 border-white/50">
+                      <div className="scanner-line absolute left-0 h-1 w-full bg-[#d62839] shadow-[0_0_15px_rgba(214,40,57,1)]" />
+
+                      <div className="absolute left-0 top-0 h-8 w-8 rounded-tl-lg border-l-4 border-t-4 border-[#d62839]" />
+                      <div className="absolute right-0 top-0 h-8 w-8 rounded-tr-lg border-r-4 border-t-4 border-[#d62839]" />
+                      <div className="absolute bottom-0 left-0 h-8 w-8 rounded-bl-lg border-b-4 border-l-4 border-[#d62839]" />
+                      <div className="absolute bottom-0 right-0 h-8 w-8 rounded-br-lg border-b-4 border-r-4 border-[#d62839]" />
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 
-            <div className="mt-6">
-              <div className="mb-2 text-xs uppercase tracking-widest text-white/45">
-                Manual fallback
-              </div>
+            <p className="mt-6 text-center text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]">
+              Apuntá la cámara al código QR del asistente para una validación instantánea.
+            </p>
 
-              <div className="flex flex-col gap-3 md:flex-row">
-                <Input
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="Paste or type ticket code"
-                  className="h-12 rounded-2xl border-white/10 bg-white/5"
-                />
-
-                <Button
-                  onClick={handleManualCheck}
-                  disabled={!code.trim() || busy}
-                  className="h-12 rounded-2xl bg-violet-600 px-6 hover:bg-violet-500"
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              {!scanning ? (
+                <button
+                  type="button"
+                  onClick={startScanner}
+                  className="rounded-lg bg-[#b20024] px-5 py-3 text-[14px] font-semibold tracking-[0.05em] text-white hover:bg-[#d62839]"
                 >
-                  {busy ? "Checking..." : "Check ticket"}
-                </Button>
-              </div>
+                  Activar cámara
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={stopScanner}
+                  className="rounded-lg bg-[#ba1a1a] px-5 py-3 text-[14px] font-semibold tracking-[0.05em] text-white hover:bg-[#93000a]"
+                >
+                  Detener cámara
+                </button>
+              )}
+
+              {scanning && cameras.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={switchCamera}
+                  className="rounded-lg border border-[#215d7d] px-5 py-3 text-[14px] font-semibold tracking-[0.05em] text-[#215d7d] hover:bg-[#e5f6ff]"
+                >
+                  Cambiar cámara
+                </button>
+              ) : null}
+            </div>
+          </article>
+
+          <article className="rounded-xl border border-[#e4bdbc] bg-white p-6 shadow-[0px_4px_20px_rgba(23,86,118,0.08)] md:p-8">
+            <div className="mb-6 flex w-full items-center justify-between">
+              <h2 className="text-[24px] font-bold leading-8 text-[#001f29]">
+                Validación manual
+              </h2>
+
+              <span className="material-symbols-outlined text-[#215d7d]">
+                keyboard
+              </span>
             </div>
 
-            {result ? (
-              <div
-                className={[
-                  "mt-6 rounded-3xl border p-5",
-                  result.type === "success"
-                    ? "border-emerald-500/30 bg-emerald-500/10"
-                    : "border-red-500/30 bg-red-500/10",
-                ].join(" ")}
-              >
-                <div className="flex items-start gap-3">
-                  <div
-                    className={[
-                      "grid h-11 w-11 place-items-center rounded-2xl",
-                      result.type === "success"
-                        ? "bg-emerald-500/15 text-emerald-300"
-                        : "bg-red-500/15 text-red-300",
-                    ].join(" ")}
-                  >
-                    {result.type === "success" ? (
-                      <CheckCircle2 className="h-6 w-6" />
-                    ) : (
-                      <XCircle className="h-6 w-6" />
-                    )}
-                  </div>
+            <div className="flex h-full flex-col gap-6">
+              <div className="flex-grow">
+                <label
+                  className="mb-2 block text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#001f29]"
+                  htmlFor="ticket-code"
+                >
+                  Código del ticket
+                </label>
 
-                  <div>
-                    <div className="text-lg font-semibold">{result.title}</div>
-                    <p className="mt-1 text-sm text-white/75">
-                      {result.message}
-                    </p>
-
-                    {result.code ? (
-                      <div className="mt-2 font-mono text-xs text-white/45">
-                        {result.code}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {loadErr ? (
-              <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-                {loadErr}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-          <Card className="rounded-3xl border-white/10 bg-white/5">
-            <CardContent className="p-6">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <div className="text-xs uppercase tracking-widest text-violet-300">
-                    Event Tickets
-                  </div>
-                  <div className="mt-1 text-lg font-semibold">
-                    Select or search a ticket
-                  </div>
-                </div>
-
-                <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
-                  <button
-                    onClick={() => setTab("VALID")}
-                    className={[
-                      "h-9 rounded-full px-5 text-sm transition",
-                      tab === "VALID"
-                        ? "bg-violet-600 text-white"
-                        : "text-white/70 hover:text-white",
-                    ].join(" ")}
-                  >
-                    Valid
-                  </button>
-
-                  <button
-                    onClick={() => setTab("USED")}
-                    className={[
-                      "h-9 rounded-full px-5 text-sm transition",
-                      tab === "USED"
-                        ? "bg-violet-600 text-white"
-                        : "text-white/70 hover:text-white",
-                    ].join(" ")}
-                  >
-                    Used
-                  </button>
-                </div>
-              </div>
-
-              <div className="relative mt-4">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search by code, username or email..."
-                  className="h-11 rounded-2xl border-white/10 bg-white/5 pl-10"
+                <input
+                  id="ticket-code"
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                  className="h-12 w-full rounded-lg border border-[#e4bdbc] bg-[#f3faff] px-4 text-[#001f29] outline-none transition-all placeholder:text-[#906f6e] focus:border-[#b20024] focus:ring-2 focus:ring-[#b20024]/20"
+                  placeholder="Ej: RF24-9988-XY"
+                  type="text"
                 />
+
+                <p className="mt-2 text-[12px] italic text-[#5b403f]">
+                  Tip: Hacé clic en una fila de la lista inferior para cargar el código automáticamente.
+                </p>
               </div>
 
-              <div className="mt-5 max-h-[620px] space-y-3 overflow-y-auto pr-1">
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={handleManualCheck}
+                  disabled={!code.trim() || busy}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b20024] py-4 text-[24px] font-bold leading-8 text-white transition-all hover:bg-[#d62839] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {busy ? "Validando..." : "Validar ticket"}
+                  <span className="material-symbols-outlined">check_circle</span>
+                </button>
+
+                <div
+                  className={[
+                    "flex min-h-[120px] items-center justify-center rounded-xl border-2 border-dashed p-4 text-center",
+                    result?.type === "success"
+                      ? "border-green-200 bg-green-100 text-green-800"
+                      : result?.type === "error"
+                        ? "border-[#ffdad6] bg-[#ffdad6] text-[#93000a]"
+                        : "border-[#e4bdbc] bg-[#e5f6ff] text-[#5b403f]",
+                  ].join(" ")}
+                >
+                  {result ? (
+                    <div>
+                      <p className="font-bold">{result.title}</p>
+                      <p className="mt-1 text-sm">{result.message}</p>
+                      {result.code ? (
+                        <p className="mt-2 font-mono text-xs opacity-80">
+                          {result.code}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p>Esperando código para validar...</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-[#e4bdbc] bg-white shadow-[0px_4px_20px_rgba(23,86,118,0.08)]">
+          <div className="flex flex-col justify-between gap-4 border-b border-[#e4bdbc] p-6 md:flex-row md:items-center">
+            <div className="relative max-w-md flex-grow">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#5b403f]">
+                search
+              </span>
+
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="h-11 w-full rounded-full border border-[#e4bdbc] bg-[#f3faff] pl-10 pr-4 text-[16px] text-[#001f29] outline-none focus:border-[#b20024] focus:ring-2 focus:ring-[#b20024]/20"
+                placeholder="Buscar por nombre, código o email"
+                type="text"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0">
+              <TabButton active={tab === "ALL"} onClick={() => setTab("ALL")}>
+                Todos
+              </TabButton>
+
+              <TabButton active={tab === "VALID"} onClick={() => setTab("VALID")}>
+                Válidos
+              </TabButton>
+
+              <TabButton active={tab === "USED"} onClick={() => setTab("USED")}>
+                Usados
+              </TabButton>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-[#e5f6ff] text-[14px] font-semibold uppercase leading-5 tracking-wider text-[#5b403f]">
+                <tr>
+                  <th className="px-6 py-4">Código</th>
+                  <th className="px-6 py-4">Nombre</th>
+                  <th className="px-6 py-4">Email</th>
+                  <th className="px-6 py-4">Tipo</th>
+                  <th className="px-6 py-4">Estado</th>
+                  <th className="px-6 py-4 text-right">Acción</th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-[#e4bdbc]">
                 {loading ? (
-                  <div className="text-sm text-white/50">Loading tickets...</div>
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-[#5b403f]">
+                      Cargando tickets...
+                    </td>
+                  </tr>
                 ) : filteredTickets.length === 0 ? (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/50">
-                    No tickets found.
-                  </div>
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-[#5b403f]">
+                      No se encontraron tickets.
+                    </td>
+                  </tr>
                 ) : (
                   filteredTickets.map((ticket) => {
                     const canCheck = ticket.status === "VALID";
 
                     return (
-                      <div
-                        key={ticket._id}
-                        className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                      <tr
+                        key={ticket._id || ticket.id || ticket.code}
+                        onClick={() => {
+                          setCode(ticket.code || "");
+                          document.getElementById("ticket-code")?.focus();
+                        }}
+                        className="cursor-pointer transition-colors hover:bg-[#e5f6ff]"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="font-mono text-sm text-white/90">
-                              {ticket.code}
-                            </div>
+                        <td className="px-6 py-4 text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#001f29]">
+                          {ticket.code}
+                        </td>
 
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              <Badge className={statusBadge(ticket.status)}>
-                                {ticket.status}
-                              </Badge>
+                        <td className="px-6 py-4 text-[24px] font-bold leading-8 text-[#001f29]">
+                          {getBuyerName(ticket)}
+                        </td>
 
-                              {ticket.ticketType?.name ? (
-                                <Badge className="border-sky-500/20 bg-sky-500/10 text-sky-200">
-                                  {ticket.ticketType.name}
-                                </Badge>
-                              ) : null}
-                            </div>
-                          </div>
+                        <td className="px-6 py-4 text-[#5b403f]">
+                          {getBuyerEmail(ticket)}
+                        </td>
 
-                          {canCheck ? (
-                            <Button
-                              className="rounded-xl bg-emerald-600 hover:bg-emerald-500"
-                              onClick={() => handleCheckIn(ticket.code)}
-                              disabled={busy}
-                            >
-                              Check-In
-                            </Button>
-                          ) : (
-                            <div className="text-xs text-white/45">
-                              {ticket.checkedInAt
-                                ? formatTime(ticket.checkedInAt)
-                                : "Already used"}
-                            </div>
-                          )}
-                        </div>
+                        <td className="px-6 py-4">
+                          <span className="rounded-full bg-[#c7e7ff] px-3 py-1 text-[12px] font-bold uppercase text-[#001e2e]">
+                            {getTicketTypeName(ticket)}
+                          </span>
+                        </td>
 
-                        <div className="mt-4 grid gap-2 text-sm text-white/70">
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-violet-300" />
-                            <span>
-                              {ticket.buyer?.username || "Unknown user"}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-4 w-4 text-violet-300" />
-                            <span>{ticket.buyer?.email || "No email"}</span>
-                          </div>
+                        <td className="px-6 py-4">
+                          <span
+                            className={[
+                              "flex items-center gap-1 text-[14px]",
+                              ticket.status === "VALID"
+                                ? "text-[#001f29]"
+                                : "text-[#5b403f]",
+                            ].join(" ")}
+                          >
+                            <span
+                              className={[
+                                "h-2 w-2 rounded-full",
+                                ticket.status === "VALID"
+                                  ? "bg-green-500"
+                                  : "bg-[#b20024]",
+                              ].join(" ")}
+                            />
+                            {ticketStatusLabel(ticket.status)}
+                          </span>
 
                           {ticket.checkedInAt ? (
-                            <div className="flex items-center gap-2">
-                              <Clock3 className="h-4 w-4 text-violet-300" />
-                              <span>
-                                Checked in at{" "}
-                                {formatDateTime(ticket.checkedInAt)}
-                              </span>
-                            </div>
+                            <span className="mt-1 block text-xs text-[#906f6e]">
+                              {formatTime(ticket.checkedInAt)}
+                            </span>
                           ) : null}
-                        </div>
-                      </div>
+                        </td>
+
+                        <td className="px-6 py-4 text-right">
+                          {canCheck ? (
+                            <button
+                              type="button"
+                              onClick={(eventClick) => {
+                                eventClick.stopPropagation();
+                                handleCheckIn(ticket.code);
+                              }}
+                              disabled={busy}
+                              className="rounded-lg bg-[#d62839] px-4 py-1.5 text-[14px] font-semibold leading-5 tracking-[0.05em] text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                            >
+                              Check-in
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled
+                              className="rounded-lg bg-[#e4bdbc] px-4 py-1.5 text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]/50"
+                            >
+                              Ingresado
+                            </button>
+                          )}
+                        </td>
+                      </tr>
                     );
                   })
                 )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
     </div>
+  );
+}
+
+function CheckInStyles() {
+  return (
+    <style>{`
+      .scanner-line {
+        animation: scan 2s infinite ease-in-out;
+      }
+
+      @keyframes scan {
+        0%, 100% {
+          top: 0;
+        }
+        50% {
+          top: 100%;
+        }
+      }
+
+      #ticket-checkin-reader video {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+      }
+
+      #ticket-checkin-reader {
+        overflow: hidden;
+      }
+    `}</style>
+  );
+}
+
+function KpiCard({ label, value, color, progress }) {
+  return (
+    <article className="flex flex-col gap-2 rounded-xl border border-[#e4bdbc] bg-white p-6 shadow-[0px_4px_20px_rgba(23,86,118,0.08)]">
+      <span className="text-[14px] font-semibold leading-5 tracking-[0.05em] text-[#5b403f]">
+        {label}
+      </span>
+
+      <span
+        className="text-[48px] font-extrabold leading-[56px]"
+        style={{ color }}
+      >
+        {Number(value || 0).toLocaleString("es-AR")}
+      </span>
+
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#d8f2ff]">
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${progress}%`, backgroundColor: color }}
+        />
+      </div>
+    </article>
+  );
+}
+
+function TabButton({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-full px-4 py-2 text-[14px] font-semibold leading-5 tracking-[0.05em] transition-colors",
+        active
+          ? "bg-[#b20024] text-white"
+          : "border border-[#e4bdbc] bg-[#f3faff] text-[#5b403f] hover:bg-[#e5f6ff]",
+      ].join(" ")}
+    >
+      {children}
+    </button>
   );
 }
